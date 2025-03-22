@@ -460,7 +460,80 @@ impl Spreadsheet {
         }
     }
 
+    pub fn rec_find_cycle_using_stack<'a>(&'a self, r1: i32, r2: i32, c1: i32, c2: i32, 
+                                       range_bool: bool, visited: &mut BTreeSet<String>, 
+                                       stack: &mut Vec<&'a Box<Cell>>) -> bool {
+        while !stack.is_empty() {
+            let my_node = stack.pop().unwrap();
+            
+            // Generate cell name for the current node
+            let cell_name = Self::get_cell_name(my_node.row, my_node.col);
+            
+            // Mark as visited
+            visited.insert(cell_name.clone());
+            
+            // Check if the cell is part of the target range
+            let in_range = if range_bool {
+                // For range functions (SUM, AVG, etc.)
+                my_node.row >= r1 && my_node.row <= r2 && 
+                my_node.col >= c1 && my_node.col <= c2
+            } else {
+                // For direct cell references
+                (my_node.row == r1 && my_node.col == c1) || 
+                (my_node.row == r2 && my_node.col == c2)
+            };
+            
+            if in_range {
+                // Cycle detected
+                return true;
+            } else {
+                // Check all dependent cells - handle different types of dependents
+                // Use match to handle the Dependents enum variants
+                let dependent_names: Vec<&String> = match &my_node.dependents {
+                    crate::cell::Dependents::Vector(vec) => vec.iter().collect(),
+                    crate::cell::Dependents::Set(set) => set.iter().collect(),
+                    crate::cell::Dependents::None => Vec::new(),
+                };
+                
+                for dependent_name in dependent_names {
+                    if !visited.contains(dependent_name) {
+                        if let Some((r, c)) = self.spreadsheet_parse_cell_name(dependent_name) {
+                            let index = ((r - 1) * self.cols + (c - 1)) as usize;
+                            if index < self.cells.len() {
+                                if let Some(ref neighbor_node) = self.cells[index] {
+                                    stack.push(neighbor_node);
+                                } else {
+                                    // Cell reference exists but cell not found
+                                    return true;
+                                }
+                            } else {
+                                // Invalid cell index
+                                return true;
+                            }
+                        } else {
+                            // Invalid cell name
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // No cycle found
+        false
+    }
 
+    // Helper method to check for cycles before updating a cell
+    pub fn check_for_cycle<'a>(&'a self, r1: i32, r2: i32, c1: i32, c2: i32, 
+                           range_bool: bool, curr_cell: &'a Box<Cell>) -> bool {
+        let mut visited = BTreeSet::new();
+        let mut stack = Vec::new();
+        
+        // Start DFS from the current cell
+        stack.push(curr_cell);
+        
+        self.rec_find_cycle_using_stack(r1, r2, c1, c2, range_bool, &mut visited, &mut stack)
+    }
 }
 
 

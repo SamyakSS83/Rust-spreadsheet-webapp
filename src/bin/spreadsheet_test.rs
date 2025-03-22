@@ -1,4 +1,5 @@
 use cop::spreadsheet::Spreadsheet;
+use cop::cell;
 use std::assert;
 
 // Helper function to get cell index

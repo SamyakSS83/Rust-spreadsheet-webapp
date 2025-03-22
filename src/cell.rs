@@ -8,10 +8,10 @@ pub struct Cell {
     pub formula: Option<String>,
     pub container: i32, // 0 for Vector, 1 for OrderedSet
     pub dependents_initialised: i32,
-    dependents: Dependents,
+    pub dependents: Dependents,
 }
 
-enum Dependents {
+pub enum Dependents {
     Vector(Vec<String>),
     Set(BTreeSet<String>),
     None,
