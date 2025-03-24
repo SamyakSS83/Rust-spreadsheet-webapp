@@ -88,7 +88,7 @@ impl Spreadsheet {
         Some((row, col))
     }
 
-    pub fn isNumeric(s: &str) -> bool {
+    pub fn is_numeric(s: &str) -> bool {
         s.chars().all(|c| c.is_ascii_digit())
     }
 
@@ -174,7 +174,7 @@ impl Spreadsheet {
             let mut val = 0;
             
             // Case 1: args is a numeric value
-            if Self::isNumeric(args) {
+            if Self::is_numeric(args) {
                 val = args.parse::<i32>().unwrap_or(0);
                 cell.error = false;
             } else {
@@ -647,7 +647,7 @@ impl Spreadsheet {
             if !processed_range {
                 if let Ok((dep_r1, dep_r2, dep_c1, dep_c2, _)) = self.find_depends(&formula) {
                     if dep_r1 > 0 {
-                        let dep_index = (((dep_r1 - 1) * self.cols + (dep_c1 - 1)) as usize);
+                        let dep_index = ((dep_r1 - 1) * self.cols + (dep_c1 - 1)) as usize;
                         
                         if let Some(dep_cell) = self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut()) {
                             crate::cell::cell_dep_remove(dep_cell, cell_name);
@@ -655,7 +655,7 @@ impl Spreadsheet {
                     }
                     
                     if dep_r2 > 0 {
-                        let dep_index = (((dep_r2 - 1) * self.cols + (dep_c2 - 1)) as usize);
+                        let dep_index = ((dep_r2 - 1) * self.cols + (dep_c2 - 1)) as usize;
                         
                         if let Some(dep_cell) = self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut()) {
                             crate::cell::cell_dep_remove(dep_cell, cell_name);
@@ -728,7 +728,7 @@ impl Spreadsheet {
         if !processed_range {
             if let Ok((dep_r1, dep_r2, dep_c1, dep_c2, _)) = self.find_depends(formula) {
                 if dep_r1 > 0 {
-                    let dep_index = (((dep_r1 - 1) * self.cols + (dep_c1 - 1)) as usize);
+                    let dep_index = ((dep_r1 - 1) * self.cols + (dep_c1 - 1)) as usize;
                     if let Some(dep_cell) = self.cells
                         .get_mut(dep_index)
                         .and_then(|opt| opt.as_mut())
@@ -737,7 +737,7 @@ impl Spreadsheet {
                     }
                 }
                 if dep_r2 > 0 {
-                    let dep_index = (((dep_r2 - 1) * self.cols + (dep_c2 - 1)) as usize);
+                    let dep_index = ((dep_r2 - 1) * self.cols + (dep_c2 - 1)) as usize;
                     if let Some(dep_cell) = self.cells
                         .get_mut(dep_index)
                         .and_then(|opt| opt.as_mut())

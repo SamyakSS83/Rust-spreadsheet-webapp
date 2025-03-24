@@ -8,23 +8,23 @@ fn get_cell_index(sheet: &Spreadsheet, row: i32, col: i32) -> usize {
 }
 
 // Helper function to check cell values
-fn assert_cell_value(sheet: &Spreadsheet, cell_name: &str, expected_value: i32, expected_error: bool) {
-    let result = sheet.spreadsheet_parse_cell_name(cell_name);
-    assert!(result.is_some(), "Cell name should be valid: {}", cell_name);
+// fn assert_cell_value(sheet: &Spreadsheet, cell_name: &str, expected_value: i32, expected_error: bool) {
+//     let result = sheet.spreadsheet_parse_cell_name(cell_name);
+//     assert!(result.is_some(), "Cell name should be valid: {}", cell_name);
     
-    let (row, col) = result.unwrap();
-    let idx = get_cell_index(sheet, row, col);
+//     let (row, col) = result.unwrap();
+//     let idx = get_cell_index(sheet, row, col);
     
-    let cell = &sheet.cells[idx];
-    assert!(cell.is_some(), "Cell should exist at index {}", idx);
+//     let cell = &sheet.cells[idx];
+//     assert!(cell.is_some(), "Cell should exist at index {}", idx);
     
-    let cell = cell.as_ref().unwrap();
-    assert_eq!(cell.value, expected_value);
-    assert_eq!(cell.error, expected_error);
+//     let cell = cell.as_ref().unwrap();
+//     assert_eq!(cell.value, expected_value);
+//     assert_eq!(cell.error, expected_error);
     
-    println!("✓ Cell {} has value {} and error status {} as expected", 
-           cell_name, expected_value, expected_error);
-}
+//     println!("✓ Cell {} has value {} and error status {} as expected", 
+//            cell_name, expected_value, expected_error);
+// }
 
 // Test spreadsheet creation and basic properties
 fn test_spreadsheet_create() {
@@ -917,14 +917,14 @@ fn test_dependency_updates() {
 // Add the new test to the existing run_tests sequence:
 pub fn run_tests() {
     println!("Starting spreadsheet unit tests");
-    // test_spreadsheet_create();
-    // test_spreadsheet_parse_cell_name();
-    // test_column_letter_conversion();
-    // test_cell_name_helpers();
-    // test_find_depends();
-    // test_spreadsheet_evaluate_function();
-    // test_spreadsheet_evaluate_expression(); // Add our new test
-    // test_cycle_detection(); // Add this line to call the new test
+    test_spreadsheet_create();
+    test_spreadsheet_parse_cell_name();
+    test_column_letter_conversion();
+    test_cell_name_helpers();
+    test_find_depends();
+    test_spreadsheet_evaluate_function();
+    test_spreadsheet_evaluate_expression(); // Add our new test
+    test_cycle_detection(); // Add this line to call the new test
     test_remove_old_dependents(); // Add this line to call the new test
     test_dependency_updates(); // New dependency tests
     println!("All tests passed!");
