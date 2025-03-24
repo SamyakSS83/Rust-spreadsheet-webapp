@@ -1,4 +1,4 @@
-use cop::cell::{Cell, cell_create, cell_destroy, cell_dep_insert, cell_dep_remove};
+use cop::cell::{Cell, cell_create,  cell_dep_insert, cell_dep_remove};
 // use crate::cell::{Cell, cell_create, cell_destroy, cell_dep_insert, cell_dep_remove};
 
 // Helper function to print a key
@@ -86,9 +86,6 @@ fn main() {
     let cell_size = std::mem::size_of::<Cell>();
     println!("Size of Cell struct: {} bytes", cell_size);
     
-    cell_destroy(cell);
-    cell_destroy(cell2);
-    println!("Cells destroyed successfully\n");
     
     println!("All tests completed.");
 }

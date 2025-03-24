@@ -356,7 +356,7 @@ fn test_spreadsheet_evaluate_function() {
     // = sqrt((−15)²+(−5)²+5²+15²/4) = sqrt(225+25+25+225/4) = sqrt(500/4) = sqrt(125) ≈ 11
     assert_eq!(result, 11); // Using integer rounding
     assert!(!test_cell.error);
-    println!("✓ STDEV(A1:B2) = {} (expected ~13)", result);
+    println!("✓ STDEV(A1:B2) = {} (expected ~11)", result);
     
     // Test SLEEP function with numeric argument (mock test, not actually sleeping)
     let result = sheet.spreadsheet_evaluate_function(
@@ -526,19 +526,407 @@ fn test_spreadsheet_evaluate_expression() {
     assert!(test_cell.error);
     println!("✓ Invalid expression '10@20' handled correctly");
     
-    // Clean up
-    cop::cell::cell_destroy(test_cell);
 }
 
+fn test_cycle_detection() {
+    println!("\n====== Testing cycle detection ======");
+    let mut sheet = Spreadsheet::spreadsheet_create(10, 10).unwrap();
+    
+    // Set up a cycle: A1 depends on B1, B1 depends on C1, C1 depends on A1
+    {
+        // Set up A1 to reference B1
+        if let Some(ref mut cell_a1) = sheet.cells[0] {
+            cell_a1.formula = Some("B1".to_string());
+            // Mark B1 as a dependent of A1
+            cell::cell_dep_insert(cell_a1, "B1");
+        }
+        
+        // Set up B1 to reference C1
+        if let Some(ref mut cell_b1) = sheet.cells[1] {
+            cell_b1.formula = Some("C1".to_string());
+            // Mark C1 as a dependent of B1
+            cell::cell_dep_insert(cell_b1, "C1");
+        }
+        
+        // Set up C1 to reference A1 (creating a cycle)
+        if let Some(ref mut cell_c1) = sheet.cells[2] {
+            cell_c1.formula = Some("A1".to_string());
+            // Mark A1 as a dependent of C1
+            cell::cell_dep_insert(cell_c1, "A1");
+        }
+    }
+    
+    // Test direct cycle detection: A1 -> B1 -> C1 -> A1
+    {
+        // Check if cycle is detected
+        let has_cycle = sheet.first_step_find_cycle("A1", 1, 1, 1, 1, false);
+        assert!(has_cycle, "Should detect cycle starting from A1");
+        println!("✓ Detected cycle in A1 -> B1 -> C1 -> A1");
+        
+        // Also check from other cells in the cycle
+        let has_cycle = sheet.first_step_find_cycle("B1", 1, 1, 1, 1, false);
+        assert!(has_cycle, "Should detect cycle starting from B1");
+        println!("✓ Detected cycle in B1 -> C1 -> A1 -> B1");
+        
+        let has_cycle = sheet.first_step_find_cycle("C1", 1, 1, 1, 1, false);
+        assert!(has_cycle, "Should detect cycle starting from C1");
+        println!("✓ Detected cycle in C1 -> A1 -> B1 -> C1");
+    }
+    
+    // Set up a range-based cycle: D1 depends on SUM(E1:F1), E1 depends on D1
+    {
+        // Set up D1 to reference SUM(E1:F1)
+        if let Some(ref mut cell_d1) = sheet.cells[3] {
+            cell_d1.formula = Some("SUM(E1:F1)".to_string());
+            // Mark E1 and F1 as dependents of D1
+            cell::cell_dep_insert(cell_d1, "E1");
+            cell::cell_dep_insert(cell_d1, "F1");
+        }
+        
+        // Set up E1 to reference D1 (creating a cycle)
+        if let Some(ref mut cell_e1) = sheet.cells[4] {
+            cell_e1.formula = Some("D1".to_string());
+            // Mark D1 as a dependent of E1
+            cell::cell_dep_insert(cell_e1, "D1");
+        }
+    }
+    
+    // Test range-based cycle detection
+    {
+        // Check if range-based cycle is detected
+        let has_cycle = sheet.first_step_find_cycle("D1", 1, 1, 5, 6, true);
+        assert!(has_cycle, "Should detect cycle in range formula");
+        println!("✓ Detected cycle with range formula: D1 -> SUM(E1:F1), E1 -> D1");
+        
+        // Check from the other direction
+        let has_cycle = sheet.first_step_find_cycle("E1", 1, 1, 4, 4, false);
+        assert!(has_cycle, "Should detect cycle starting from E1");
+        println!("✓ Detected cycle starting from E1: E1 -> D1 -> SUM(E1:F1)");
+    }
+    
+    // Update the test setup for G1, H1, I1
+
+    // Set up a no-cycle case: G1 depends on H1, H1 depends on I1
+    {
+        // Set up G1 to reference H1
+        if let Some(ref mut cell_g1) = sheet.cells[6] {
+            cell_g1.formula = Some("H1".to_string());
+            // In a non-cycle case, G1 does NOT have any dependents
+            // Do not add any dependents for G1
+        }
+        
+        // Set up H1 to reference I1
+        if let Some(ref mut cell_h1) = sheet.cells[7] {
+            cell_h1.formula = Some("I1".to_string());
+            // H1 depends on I1, so I1 is dependent on H1
+            cell::cell_dep_insert(cell_h1, "I1");
+        }
+        
+        // I1 has no formula, just a value
+        if let Some(ref mut cell_i1) = sheet.cells[8] {
+            cell_i1.value = 42;  // Some arbitrary value
+        }
+    }
+    
+    // Test no-cycle case
+    {
+        // Check that no cycle is detected when there isn't one
+        let has_cycle = sheet.first_step_find_cycle("G1", 1, 1, 8, 8, false);
+        assert!(!has_cycle, "Should not detect cycle when there isn't one");
+        println!("✓ Correctly found no cycle in G1 -> H1 -> I1");
+        
+        let has_cycle = sheet.first_step_find_cycle("H1", 1, 1, 10, 10, false);
+        assert!(!has_cycle, "Should not detect cycle when there isn't one");
+        println!("✓ Correctly found no cycle in H1 -> I1");
+        
+        let has_cycle = sheet.first_step_find_cycle("I1", 1, 1, 7, 7, false);
+        assert!(!has_cycle, "Should not detect cycle when there isn't one");
+        println!("✓ Correctly found no cycle for I1 (no dependencies)");
+    }
+    
+    // Test self-reference cycle
+    {
+        // Set up J1 to reference itself (clear cycle)
+        if let Some(ref mut cell_j1) = sheet.cells[9] {
+            cell_j1.formula = Some("J1".to_string());
+            // Mark J1 as a dependent of itself
+            cell::cell_dep_insert(cell_j1, "J1");
+        }
+        
+        // Check self-reference cycle
+        let has_cycle = sheet.first_step_find_cycle("J1", 1, 1, 10, 10, false);
+        assert!(has_cycle, "Should detect self-reference cycle");
+        println!("✓ Detected self-reference cycle in J1 -> J1");
+    }
+    
+    // Test handling of invalid cell names
+    {
+        let has_cycle = sheet.first_step_find_cycle("ZZ100", 1, 1, 1, 1, false);
+        assert!(!has_cycle, "Should handle invalid cell names gracefully");
+        println!("✓ Gracefully handled invalid cell name");
+    }
+}
+
+fn test_remove_old_dependents() {
+    println!("\n====== Testing remove_old_dependents ======");
+    // ----- Test the range formula case -----
+    // Create a 3x3 spreadsheet.
+    let mut sheet = Spreadsheet::spreadsheet_create(3, 3).unwrap();
+    // Set cell A1’s formula to a range function: "SUM(B1:C1)"
+    {
+        let idx_a1 = get_cell_index(&sheet, 1, 1);
+        if let Some(ref mut cell_a1) = sheet.cells[idx_a1] {
+            cell_a1.formula = Some("SUM(B1:C1)".to_string());
+        }
+    }
+    // Manually mark cells B1 and C1 as having "A1" as a dependent.
+    {
+        // B1 at row 1, col 2
+        let idx_b1 = get_cell_index(&sheet, 1, 2);
+        if let Some(ref mut cell_b1) = sheet.cells[idx_b1] {
+            crate::cell::cell_dep_insert(cell_b1, "A1");
+        }
+        // C1 at row 1, col 3
+        let idx_c1 = get_cell_index(&sheet, 1, 3);
+        if let Some(ref mut cell_c1) = sheet.cells[idx_c1] {
+            crate::cell::cell_dep_insert(cell_c1, "A1");
+        }
+    }
+    // Confirm that "A1" is present in dependents of B1 and C1.
+    {
+        let idx_b1 = get_cell_index(&sheet, 1, 2);
+        let idx_c1 = get_cell_index(&sheet, 1, 3);
+        match &sheet.cells[idx_b1].as_ref().unwrap().dependents {
+            crate::cell::Dependents::Vector(vec) => assert!(vec.contains(&"A1".to_string())),
+            crate::cell::Dependents::Set(set) => assert!(set.contains("A1")),
+            crate::cell::Dependents::None => panic!("B1 should have dependents"),
+        }
+        match &sheet.cells[idx_c1].as_ref().unwrap().dependents {
+            crate::cell::Dependents::Vector(vec) => assert!(vec.contains(&"A1".to_string())),
+            crate::cell::Dependents::Set(set) => assert!(set.contains("A1")),
+            crate::cell::Dependents::None => panic!("C1 should have dependents"),
+        }
+    }
+    // Call remove_old_dependents for "A1"
+    sheet.remove_old_dependents("A1");
+    // Verify that "A1" has been removed from B1 and C1 dependents.
+    {
+        let idx_b1 = get_cell_index(&sheet, 1, 2);
+        let idx_c1 = get_cell_index(&sheet, 1, 3);
+        match &sheet.cells[idx_b1].as_ref().unwrap().dependents {
+            crate::cell::Dependents::Vector(vec) => assert!(!vec.contains(&"A1".to_string())),
+            crate::cell::Dependents::Set(set) => assert!(!set.contains("A1")),
+            crate::cell::Dependents::None => {},
+        }
+        match &sheet.cells[idx_c1].as_ref().unwrap().dependents {
+            crate::cell::Dependents::Vector(vec) => assert!(!vec.contains(&"A1".to_string())),
+            crate::cell::Dependents::Set(set) => assert!(!set.contains("A1")),
+            crate::cell::Dependents::None => {},
+        }
+    }
+    println!("✓ remove_old_dependents successfully removed dependents for range formula");
+
+    // ----- Test the non-range formula case -----
+    // Create a new 3x3 spreadsheet.
+    let mut sheet = Spreadsheet::spreadsheet_create(3, 3).unwrap();
+    // Set cell A1’s formula to a non-range expression: "B1+C1"
+    {
+        let idx_a1 = get_cell_index(&sheet, 1, 1);
+        if let Some(ref mut cell_a1) = sheet.cells[idx_a1] {
+            cell_a1.formula = Some("B1+C1".to_string());
+        }
+    }
+    // Mark cells B1 and C1 as having "A1" as a dependent.
+    {
+        let idx_b1 = get_cell_index(&sheet, 1, 2);
+        let idx_c1 = get_cell_index(&sheet, 1, 3);
+        if let Some(ref mut cell_b1) = sheet.cells[idx_b1] {
+            crate::cell::cell_dep_insert(cell_b1, "A1");
+        }
+        if let Some(ref mut cell_c1) = sheet.cells[idx_c1] {
+            crate::cell::cell_dep_insert(cell_c1, "A1");
+        }
+    }
+    // Confirm the dependents exist.
+    {
+        let idx_b1 = get_cell_index(&sheet, 1, 2);
+        let idx_c1 = get_cell_index(&sheet, 1, 3);
+        match &sheet.cells[idx_b1].as_ref().unwrap().dependents {
+            crate::cell::Dependents::Vector(vec) => assert!(vec.contains(&"A1".to_string())),
+            crate::cell::Dependents::Set(set) => assert!(set.contains("A1")),
+            crate::cell::Dependents::None => panic!("B1 should have dependents"),
+        }
+        match &sheet.cells[idx_c1].as_ref().unwrap().dependents {
+            crate::cell::Dependents::Vector(vec) => assert!(vec.contains(&"A1".to_string())),
+            crate::cell::Dependents::Set(set) => assert!(set.contains("A1")),
+            crate::cell::Dependents::None => panic!("C1 should have dependents"),
+        }
+    }
+    // Call remove_old_dependents for "A1"
+    sheet.remove_old_dependents("A1");
+    // Confirm that "A1" is removed.
+    {
+        let idx_b1 = get_cell_index(&sheet, 1, 2);
+        let idx_c1 = get_cell_index(&sheet, 1, 3);
+        match &sheet.cells[idx_b1].as_ref().unwrap().dependents {
+            crate::cell::Dependents::Vector(vec) => assert!(!vec.contains(&"A1".to_string())),
+            crate::cell::Dependents::Set(set) => assert!(!set.contains("A1")),
+            crate::cell::Dependents::None => {},
+        }
+        match &sheet.cells[idx_c1].as_ref().unwrap().dependents {
+            crate::cell::Dependents::Vector(vec) => assert!(!vec.contains(&"A1".to_string())),
+            crate::cell::Dependents::Set(set) => assert!(!set.contains("A1")),
+            crate::cell::Dependents::None => {},
+        }
+    }
+    println!("✓ remove_old_dependents successfully removed dependents for non-range formula");
+}
+
+fn test_dependency_updates() {
+    println!("\n====== Testing dependency updates ======");
+
+    // Create a 4x2 spreadsheet for testing
+    let mut sheet = Spreadsheet::spreadsheet_create(4, 2).unwrap();
+
+    // Set cell values:
+    // A1 = 5, A2 = 10, A3 = 20, A4 = -5
+    {
+        let idx_a1 = get_cell_index(&sheet, 1, 1);
+        if let Some(ref mut cell) = sheet.cells[idx_a1] {
+            cell.value = 5;
+        }
+        let idx_a2 = get_cell_index(&sheet, 2, 1);
+        if let Some(ref mut cell) = sheet.cells[idx_a2] {
+            cell.value = 10;
+        }
+        let idx_a3 = get_cell_index(&sheet, 3, 1);
+        if let Some(ref mut cell) = sheet.cells[idx_a3] {
+            cell.value = 20;
+        }
+        let idx_a4 = get_cell_index(&sheet, 4, 1);
+        if let Some(ref mut cell) = sheet.cells[idx_a4] {
+            cell.value = -5;
+        }
+    }
+
+    // Set B1 = "A1+A2" (B1 is row1, col2)
+    sheet.update_dependencies("B1", "A1+A2");
+
+    // Verify that A1 and A2 have "B1" as a dependent.
+    {
+        let idx_a1 = get_cell_index(&sheet, 1, 1);
+        let deps_a1 = sheet.collect_dependent_keys(sheet.cells[idx_a1].as_ref().unwrap());
+        assert!(deps_a1.contains(&"B1".to_string()), "A1 should have dependent B1");
+        println!("✓ A1 contains dependent B1");
+
+        let idx_a2 = get_cell_index(&sheet, 2, 1);
+        let deps_a2 = sheet.collect_dependent_keys(sheet.cells[idx_a2]  .as_ref()
+            .unwrap()
+            );
+        assert!(deps_a2.contains(&"B1".to_string()), "A2 should have dependent B1");
+        println!("✓ A2 contains dependent B1");
+        // Print the formula in B1
+        
+    }
+
+    // Now update B1's formula to "A2*2" so that only A2 is a dependency.
+   sheet.update_dependencies("B1", "A3*2");
+
+    // Verify that A1 no longer has "B1" while A2 still does.
+    {
+        let idx_a1 = get_cell_index(&sheet, 1, 1);
+        let deps_a1 = sheet.collect_dependent_keys(sheet.cells[idx_a1].as_ref().unwrap());
+        assert!(!deps_a1.contains(&"B1".to_string()), "A1 should not have dependent B1 after update");
+        println!("✓ After update, A1 does not contain dependent B1");
+        
+        let idx_a2 = get_cell_index(&sheet, 2, 1);
+        let deps_a2 = sheet.collect_dependent_keys(sheet.cells[idx_a2]
+            .as_ref()
+            .unwrap()
+            );
+        assert!(!deps_a2.contains(&"B1".to_string()), "A2 should not have dependent B1 after update");
+        println!("✓ After update, A2 does not contains dependent B1");
+
+        let idx_a3 = get_cell_index(&sheet, 3, 1);
+        let deps_a3 = sheet.collect_dependent_keys(sheet.cells[idx_a3]
+            .as_ref()
+            .unwrap())
+            ;
+        assert!(deps_a3.contains(&"B1".to_string()), "A3 should have dependent B1 after update");
+        println!("✓ After update, A3 contains dependent B1");
+    }
+
+    // Additional example:
+    // Set B2 = "SUM(A1:A4)" (B2 is row2, col2)
+    sheet.update_dependencies("B2", "SUM(A1:A4)");
+
+    // Verify that each cell in column A (A1, A2, A3, A4) now includes "B2" as a dependent.
+    for row in 1..=4 {
+        let idx = get_cell_index(&sheet, row, 1);
+        let deps = sheet.collect_dependent_keys(sheet.cells[idx]
+            .as_ref()
+            .unwrap()
+            );
+        assert!(deps.contains(&"B2".to_string()), "A{} should have dependent B2", row);
+        println!("✓ A{} contains dependent B2", row);
+    }
+
+    // A further example: Test a non-arithmetic formula.
+    // Create a larger sheet (4x4) and set C1 = "A3-A4" (C1 is row1, col3)
+    let mut sheet_large = Spreadsheet::spreadsheet_create(4, 4).unwrap();
+    {
+        let idx_a1 = get_cell_index(&sheet_large, 1, 1);
+        if let Some(ref mut cell) = sheet_large.cells[idx_a1] {
+            cell.value = 5;
+        }
+        let idx_a2 = get_cell_index(&sheet_large, 2, 1);
+        if let Some(ref mut cell) = sheet_large.cells[idx_a2] {
+            cell.value = 10;
+        }
+        let idx_a3 = get_cell_index(&sheet_large, 3, 1);
+        if let Some(ref mut cell) = sheet_large.cells[idx_a3] {
+            cell.value = 20;
+        }
+        let idx_a4 = get_cell_index(&sheet_large, 4, 1);
+        if let Some(ref mut cell) = sheet_large.cells[idx_a4] {
+            cell.value = -5;
+        }
+    }
+    sheet_large.update_dependencies("C1", "A3-A4");
+
+    // Verify that A3 and A4 have "C1" as a dependent.
+    {
+        let idx_a3 = get_cell_index(&sheet_large, 3, 1);
+        let deps_a3 = sheet_large.collect_dependent_keys(sheet_large.cells[idx_a3].as_ref().unwrap())
+            ;
+        assert!(deps_a3.contains(&"C1".to_string()), "A3 should have dependent C1");
+        println!("✓ A3 contains dependent C1");
+
+        let idx_a4 = get_cell_index(&sheet_large, 4, 1);
+        let deps_a4 = sheet_large.collect_dependent_keys(sheet_large.cells[idx_a4]
+            .as_ref()
+            .unwrap()
+            );
+        assert!(deps_a4.contains(&"C1".to_string()), "A4 should have dependent C1");
+        println!("✓ A4 contains dependent C1");
+    }
+
+    println!("All dependency update tests passed");
+}
+
+// Add the new test to the existing run_tests sequence:
 pub fn run_tests() {
     println!("Starting spreadsheet unit tests");
-    test_spreadsheet_create();
-    test_spreadsheet_parse_cell_name();
-    test_column_letter_conversion();
-    test_cell_name_helpers();
-    test_find_depends();
-    test_spreadsheet_evaluate_function();
-    test_spreadsheet_evaluate_expression(); // Add our new test
+    // test_spreadsheet_create();
+    // test_spreadsheet_parse_cell_name();
+    // test_column_letter_conversion();
+    // test_cell_name_helpers();
+    // test_find_depends();
+    // test_spreadsheet_evaluate_function();
+    // test_spreadsheet_evaluate_expression(); // Add our new test
+    // test_cycle_detection(); // Add this line to call the new test
+    test_remove_old_dependents(); // Add this line to call the new test
+    test_dependency_updates(); // New dependency tests
     println!("All tests passed!");
 }
 

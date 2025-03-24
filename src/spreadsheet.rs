@@ -1,5 +1,5 @@
 use std::collections::BTreeSet;
-use crate::cell::{cell_create, cell_destroy, Cell};
+use crate::cell::{cell_create, Cell};
 
 pub struct Spreadsheet {
     pub rows: i32,
@@ -34,11 +34,7 @@ impl Spreadsheet {
         Some(sheet)
     }
 
-    pub fn spreadsheet_destroy(self) {
-        for cell in self.cells.into_iter().flatten() {
-            cell_destroy(cell);
-        }
-    }
+    
 
     pub fn col_to_letter(col: i32) -> String {
         let mut col = col;
@@ -469,8 +465,13 @@ impl Spreadsheet {
             // Generate cell name for the current node
             let cell_name = Self::get_cell_name(my_node.row, my_node.col);
             
+            // Check if we've already visited this cell
+            if visited.contains(&cell_name) {
+                continue;  // Skip cells we've already processed
+            }
+            
             // Mark as visited
-            visited.insert(cell_name.clone());
+            visited.insert(cell_name);
             
             // Check if the cell is part of the target range
             let in_range = if range_bool {
@@ -487,13 +488,8 @@ impl Spreadsheet {
                 // Cycle detected
                 return true;
             } else {
-                // Check all dependent cells - handle different types of dependents
-                // Use match to handle the Dependents enum variants
-                let dependent_names: Vec<&String> = match &my_node.dependents {
-                    crate::cell::Dependents::Vector(vec) => vec.iter().collect(),
-                    crate::cell::Dependents::Set(set) => set.iter().collect(),
-                    crate::cell::Dependents::None => Vec::new(),
-                };
+                // Check all dependent cells using our helper method
+                let dependent_names = self.get_dependent_names(my_node);
                 
                 for dependent_name in dependent_names {
                     if !visited.contains(dependent_name) {
@@ -502,17 +498,8 @@ impl Spreadsheet {
                             if index < self.cells.len() {
                                 if let Some(ref neighbor_node) = self.cells[index] {
                                     stack.push(neighbor_node);
-                                } else {
-                                    // Cell reference exists but cell not found
-                                    return true;
                                 }
-                            } else {
-                                // Invalid cell index
-                                return true;
                             }
-                        } else {
-                            // Invalid cell name
-                            return true;
                         }
                     }
                 }
@@ -534,6 +521,235 @@ impl Spreadsheet {
         
         self.rec_find_cycle_using_stack(r1, r2, c1, c2, range_bool, &mut visited, &mut stack)
     }
+
+    // Collects keys from dependents regardless of the storage type
+    pub fn collect_dependent_keys(&self, cell: &Box<Cell>) -> Vec<String> {
+        match &cell.dependents {
+            crate::cell::Dependents::Vector(vec) => {
+                // For Vector, simply clone all elements
+                vec.iter().cloned().collect()
+            },
+            crate::cell::Dependents::Set(set) => {
+                // For BTreeSet, also simply clone all elements (already ordered)
+                set.iter().cloned().collect()
+            },
+            crate::cell::Dependents::None => {
+                // No dependents
+                Vec::new()
+            }
+        }
+    }
+    
+    // Count the number of dependent cells
+    pub fn count_dependent_cells(&self, cell: &Box<Cell>) -> usize {
+        match &cell.dependents {
+            crate::cell::Dependents::Vector(vec) => vec.len(),
+            crate::cell::Dependents::Set(set) => set.len(),
+            crate::cell::Dependents::None => 0,
+        }
+    }
+    
+    // Helper method for the rec_find_cycle_using_stack function - simplifies dependent collection
+    pub fn get_dependent_names<'a>(&self, cell: &'a Box<Cell>) -> Vec<&'a String> {
+        match &cell.dependents {
+            crate::cell::Dependents::Vector(vec) => vec.iter().collect(),
+            crate::cell::Dependents::Set(set) => set.iter().collect(),
+            crate::cell::Dependents::None => Vec::new(),
+        }
+    }
+
+    // Entry point for cycle detection - checks if a given cell could create a cycle
+    pub fn first_step_find_cycle(&self, cell_name: &str, r1: i32, r2: i32, c1: i32, c2: i32, range_bool: bool) -> bool {
+        // Parse the cell name to get row and column indices
+        let (r_, c_) = match self.spreadsheet_parse_cell_name(cell_name) {
+            Some(coords) => coords,
+            None => return false, // Invalid cell name
+        };
+        
+        // Get the index of the cell in the flattened vector
+        let index = ((r_ - 1) * self.cols + (c_ - 1)) as usize;
+        
+        // Get the cell from the spreadsheet
+        let start_node = match &self.cells[index] {
+            Some(cell) => cell,
+            None => return false, // Cell doesn't exist
+        };
+        
+        // Create a visited set and stack for cycle detection
+        let mut visited = BTreeSet::new();
+        let mut stack = Vec::new();
+        
+        // Start DFS from the current cell
+        stack.push(start_node);
+        
+        // Call the recursive helper to find cycles
+        self.rec_find_cycle_using_stack(r1, r2, c1, c2, range_bool, &mut visited, &mut stack)
+    }
+
+    pub fn remove_old_dependents(&mut self, cell_name: &str) {
+        // Parse the provided cell name to locate the current cell.
+        let formula_and_deps = if let Some((r, c)) = self.spreadsheet_parse_cell_name(cell_name) {
+            let index = ((r - 1) * self.cols + (c - 1)) as usize;
+            if let Some(curr_cell) = self.cells.get(index).and_then(|opt| opt.as_ref()) {
+                // If there's no formula, nothing to update.
+                curr_cell.formula.clone()
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        
+        // Process formula if it exists
+        if let Some(formula) = formula_and_deps {
+            let ranges = ["MIN", "MAX", "AVG", "SUM", "STDEV"];
+            let mut processed_range = false;
+            // Check if the formula starts with one of the range functions.
+            for range in &ranges {
+                if formula.starts_with(range) {
+                    if let (Some(open_paren_idx), Some(close_paren_idx)) =
+                        (formula.find('('), formula.find(')'))
+                    {
+                        let only_range = &formula[open_paren_idx + 1..close_paren_idx];
+                        
+                        if let Some(colon_pos) = only_range.find(':') {
+                            let start_cell_str = only_range[..colon_pos].trim();
+                            let end_cell_str = only_range[colon_pos + 1..].trim();
+                            
+                            if let (Some((start_row, start_col)),
+                                    Some((end_row, end_col))) =
+                                (
+                                    self.spreadsheet_parse_cell_name(start_cell_str),
+                                    self.spreadsheet_parse_cell_name(end_cell_str)
+                                )
+                            {
+                                // Convert to 0-based indices and iterate over the range.
+                                for r in (start_row - 1)..=(end_row - 1) {
+                                    for c in start_col..=end_col {
+                                        let dep_index = (r * self.cols + (c - 1)) as usize;
+                                        
+                                        if let Some(dep_cell) =
+                                            self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
+                                        {
+                                            crate::cell::cell_dep_remove(dep_cell, cell_name);
+                                        }
+                                    }
+                                }
+                                processed_range = true;
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
+            
+            // Non-range formula: remove dependency from the two cell references found.
+            if !processed_range {
+                if let Ok((dep_r1, dep_r2, dep_c1, dep_c2, _)) = self.find_depends(&formula) {
+                    if dep_r1 > 0 {
+                        let dep_index = (((dep_r1 - 1) * self.cols + (dep_c1 - 1)) as usize);
+                        
+                        if let Some(dep_cell) = self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut()) {
+                            crate::cell::cell_dep_remove(dep_cell, cell_name);
+                        }
+                    }
+                    
+                    if dep_r2 > 0 {
+                        let dep_index = (((dep_r2 - 1) * self.cols + (dep_c2 - 1)) as usize);
+                        
+                        if let Some(dep_cell) = self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut()) {
+                            crate::cell::cell_dep_remove(dep_cell, cell_name);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn update_dependencies(&mut self, cell_name: &str, formula: &str) -> i32 {
+        // First, parse the cell—this mirrors C obtaining the current cell coordinates.
+        let (r, c) = self.spreadsheet_parse_cell_name(cell_name).unwrap();
+
+        // Remove old dependencies
+        self.remove_old_dependents(cell_name);
+        // Add the new formula to the cell
+        let index = ((r - 1) * self.cols + (c - 1)) as usize;
+        if let Some(cell) = self.cells.get_mut(index).and_then(|opt| opt.as_mut()) {
+            cell.formula = Some(formula.to_string());
+        }
+        // Now, process the formula to update dependencies.
+
+        let ranges = ["MIN", "MAX", "AVG", "SUM", "STDEV"];
+        let mut processed_range = false;
+        // If the formula starts with one of the range functions...
+        for range in &ranges {
+            if formula.starts_with(range) {
+                if let Some(open_paren_idx) = formula.find('(') {
+                    let rest = &formula[open_paren_idx + 1..];
+                    if let Some(close_paren_idx) = rest.find(')') {
+                        let only_range = &rest[..close_paren_idx];
+                        // Expect a format like "A1:B3"
+                        let parts: Vec<&str> = only_range.split(':').collect();
+                        if parts.len() == 2 {
+                            if let (Some((start_row, start_col)), Some((end_row, end_col))) =
+                                (self.spreadsheet_parse_cell_name(parts[0].trim()),
+                                 self.spreadsheet_parse_cell_name(parts[1].trim()))
+                            {
+                                // Convert to 0-based indices for rows (columns remain 1-based in our indexing)
+                                let r1 = start_row - 1;
+                                let r2 = end_row - 1;
+                                
+                                // Check validity as in the C code:
+                                if end_col < start_col || (start_col == end_col && r2 < r1) {
+                                    return -1;
+                                }
+
+                                // Iterate over the range and update dependencies.
+                                for r in r1..=r2 {
+                                    for c in start_col..=end_col {
+                                        let dep_index = (r * self.cols + (c - 1)) as usize;
+                                        if let Some(dep_cell) = self.cells
+                                            .get_mut(dep_index)
+                                            .and_then(|opt| opt.as_mut())
+                                        {
+                                            crate::cell::cell_dep_insert(dep_cell, cell_name);
+                                        }
+                                    }
+                                }
+                                processed_range = true;
+                            }
+                        }
+                    }
+                }
+                break;
+            }
+        }
+        // Non-range formula: add dependency only for the two cell references found.
+        if !processed_range {
+            if let Ok((dep_r1, dep_r2, dep_c1, dep_c2, _)) = self.find_depends(formula) {
+                if dep_r1 > 0 {
+                    let dep_index = (((dep_r1 - 1) * self.cols + (dep_c1 - 1)) as usize);
+                    if let Some(dep_cell) = self.cells
+                        .get_mut(dep_index)
+                        .and_then(|opt| opt.as_mut())
+                    {
+                        crate::cell::cell_dep_insert(dep_cell, cell_name);
+                    }
+                }
+                if dep_r2 > 0 {
+                    let dep_index = (((dep_r2 - 1) * self.cols + (dep_c2 - 1)) as usize);
+                    if let Some(dep_cell) = self.cells
+                        .get_mut(dep_index)
+                        .and_then(|opt| opt.as_mut())
+                    {
+                        crate::cell::cell_dep_insert(dep_cell, cell_name);
+                    }
+                }
+            }
+        }
+        0
+    }
+
 }
 
 

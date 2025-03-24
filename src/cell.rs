@@ -91,9 +91,6 @@ pub fn cell_create(row: i32, col: i32) -> Box<Cell> {
     Box::new(Cell::create(row, col))
 }
 
-pub fn cell_destroy(_cell: Box<Cell>) {
-    // No explicit destruction needed in Rust due to RAII
-}
 
 pub fn cell_dep_insert(cell: &mut Cell, key: &str) {
     cell.dep_insert(key);
