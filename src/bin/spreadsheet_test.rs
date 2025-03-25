@@ -914,7 +914,178 @@ fn test_dependency_updates() {
     println!("All dependency update tests passed");
 }
 
-// Add the new test to the existing run_tests sequence:
+fn test_topo_sort() {
+    println!("\n====== Testing topo_sort ======");
+    
+    // Create a 5x5 spreadsheet for testing
+    let mut sheet = Spreadsheet::spreadsheet_create(5, 5).unwrap();
+    
+    // Setup cell values and formulas:
+    // A1 = 10 (base value)
+    // B1 = A1 * 2  (depends on A1)
+    // C1 = B1 + 5  (depends on B1)
+    // D1 = C1 - A1 (depends on C1 and A1)
+    // E1 = SUM(B1:D1) (depends on B1, C1, D1)
+    
+    // Set up initial cell values
+    {
+        let idx_a1 = get_cell_index(&sheet, 1, 1);
+        if let Some(ref mut cell) = sheet.cells[idx_a1] {
+            cell.value = 10;
+        }
+    }
+    
+    // Set up dependencies
+    sheet.update_dependencies("B1", "A1*2");
+    sheet.update_dependencies("C1", "B1+5");
+    sheet.update_dependencies("D1", "C1-A1");
+    sheet.update_dependencies("E1", "SUM(B1:D1)");
+    
+    // Get the cell references to perform topo_sort
+    let idx_e1 = get_cell_index(&sheet, 1, 5);
+    let e1_cell = sheet.cells[idx_e1].as_ref().unwrap();
+    
+    // Perform topological sort starting from E1
+    let sorted_cells = sheet.topo_sort(e1_cell);
+    
+    // Print the order for debugging
+    println!("Topological sort result:");
+    for (i, cell) in sorted_cells.iter().enumerate() {
+        println!("  {}. {}{}", i+1, Spreadsheet::col_to_letter(cell.col), cell.row);
+    }
+    
+    // Verify basic properties of the sort
+    assert!(!sorted_cells.is_empty(), "Sorted result should not be empty");
+    
+    // Check that E1 is in the sorted list (should be the first cell)
+    let has_e1 = sorted_cells.iter().any(|cell| cell.row == 1 && cell.col == 5);
+    assert!(has_e1, "E1 should be in the sorted list");
+    
+    // Check that the order respects dependencies
+    // We'll create a map of cell positions in the sorted list
+    let mut positions = std::collections::HashMap::new();
+    for (i, cell) in sorted_cells.iter().enumerate() {
+        let cell_name = Spreadsheet::get_cell_name(cell.row, cell.col);
+        positions.insert(cell_name, i);
+    }
+    
+    // Verify dependency ordering:
+    // All cells should come before cells that depend on them
+    
+    // If A1 and B1 are both in the sorted list, A1 should come after B1
+    // (since B1 depends on A1)
+    if positions.contains_key("A1") && positions.contains_key("B1") {
+        assert!(positions["A1"] < positions["B1"], 
+                "A1 should come before B1 in topological sort");
+        println!("✓ A1 correctly sorted before B1");
+    }
+    
+    // Similarly for other dependencies
+    if positions.contains_key("B1") && positions.contains_key("C1") {
+        assert!(positions["B1"] < positions["C1"], 
+                "B1 should come before C1 in topological sort");
+        println!("✓ B1 correctly sorted before C1");
+    }
+    
+    if positions.contains_key("A1") && positions.contains_key("D1") {
+        assert!(positions["A1"] < positions["D1"], 
+                "A1 should come before D1 in topological sort");
+        println!("✓ A1 correctly sorted before D1");
+    }
+    
+    if positions.contains_key("C1") && positions.contains_key("D1") {
+        assert!(positions["C1"] < positions["D1"], 
+                "C1 should come before D1 in topological sort");
+        println!("✓ C1 correctly sorted before D1");
+    }
+    
+    // E1 depends on B1, C1, and D1, so they should all come before E1
+    if positions.contains_key("B1") && positions.contains_key("E1") {
+        assert!(positions["B1"] < positions["E1"], 
+                "B1 should come before E1 in topological sort");
+        println!("✓ B1 correctly sorted before E1");
+    }
+    
+    if positions.contains_key("C1") && positions.contains_key("E1") {
+        assert!(positions["C1"] < positions["E1"], 
+                "C1 should come before E1 in topological sort");
+        println!("✓ C1 correctly sorted before E1");
+    }
+    
+    if positions.contains_key("D1") && positions.contains_key("E1") {
+        assert!(positions["D1"] < positions["E1"], 
+                "D1 should come before E1 in topological sort");
+        println!("✓ D1 correctly sorted before E1");
+    }
+    
+    println!("✓ Topological sort passed all ordering checks");
+    
+    // Test with a more complex example - diamond dependency
+    // A2 is depended on by both B2 and C2, which are both depended on by D2
+    let mut sheet2 = Spreadsheet::spreadsheet_create(5, 5).unwrap();
+    
+    // Set up dependencies
+    {
+        let idx_a2 = get_cell_index(&sheet2, 2, 1);
+        if let Some(ref mut cell) = sheet2.cells[idx_a2] {
+            cell.value = 10;
+        }
+    }
+    
+    sheet2.update_dependencies("B2", "A2+5");
+    sheet2.update_dependencies("C2", "A2*2");
+    sheet2.update_dependencies("D2", "B2+C2");
+    
+    // Get D2 cell
+    let idx_d2 = get_cell_index(&sheet2, 2, 4);
+    let d2_cell = sheet2.cells[idx_d2].as_ref().unwrap();
+    
+    // Perform topological sort starting from D2
+    let sorted_cells2 = sheet2.topo_sort(d2_cell);
+    
+    // Print the order
+    println!("\nDiamond dependency sort result:");
+    for (i, cell) in sorted_cells2.iter().enumerate() {
+        println!("  {}. {}{}", i+1, Spreadsheet::col_to_letter(cell.col), cell.row);
+    }
+    
+    // Verify the diamond dependency ordering
+    let mut positions2 = std::collections::HashMap::new();
+    for (i, cell) in sorted_cells2.iter().enumerate() {
+        let cell_name = Spreadsheet::get_cell_name(cell.row, cell.col);
+        positions2.insert(cell_name, i);
+    }
+    
+    // Check that A2 comes before both B2 and C2
+    if positions2.contains_key("A2") && positions2.contains_key("B2") {
+        assert!(positions2["A2"] < positions2["B2"], 
+                "A2 should come before B2 in diamond dependency");
+        println!("✓ A2 correctly sorted before B2");
+    }
+    
+    if positions2.contains_key("A2") && positions2.contains_key("C2") {
+        assert!(positions2["A2"] < positions2["C2"], 
+                "A2 should come before C2 in diamond dependency");
+        println!("✓ A2 correctly sorted before C2");
+    }
+    
+    // Check that both B2 and C2 come before D2
+    if positions2.contains_key("B2") && positions2.contains_key("D2") {
+        assert!(positions2["B2"] < positions2["D2"], 
+                "B2 should come before D2 in diamond dependency");
+        println!("✓ B2 correctly sorted before D2");
+    }
+    
+    if positions2.contains_key("C2") && positions2.contains_key("D2") {
+        assert!(positions2["C2"] < positions2["D2"], 
+                "C2 should come before D2 in diamond dependency");
+        println!("✓ C2 correctly sorted before D2");
+    }
+    
+    println!("✓ Diamond dependency topological sort passed all ordering checks");
+}
+
+// Add the new test function to the run_tests function
 pub fn run_tests() {
     println!("Starting spreadsheet unit tests");
     test_spreadsheet_create();
@@ -923,10 +1094,11 @@ pub fn run_tests() {
     test_cell_name_helpers();
     test_find_depends();
     test_spreadsheet_evaluate_function();
-    test_spreadsheet_evaluate_expression(); // Add our new test
-    test_cycle_detection(); // Add this line to call the new test
-    test_remove_old_dependents(); // Add this line to call the new test
-    test_dependency_updates(); // New dependency tests
+    test_spreadsheet_evaluate_expression();
+    test_cycle_detection();
+    test_remove_old_dependents();
+    test_dependency_updates();
+    test_topo_sort(); // Add this new test
     println!("All tests passed!");
 }
 

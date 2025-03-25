@@ -1,23 +1,7 @@
 use cop::cell::{Cell, cell_create,  cell_dep_insert, cell_dep_remove};
 // use crate::cell::{Cell, cell_create, cell_destroy, cell_dep_insert, cell_dep_remove};
 
-// Helper function to print a key
-fn print_key(key: &str) {
-    print!("{} ", key);
-}
 
-// Helper function to count elements during traversal
-static mut DEPENDENT_COUNT: i32 = 0;
-fn count_dependent(key: &str) {
-    unsafe {
-        DEPENDENT_COUNT += 1;
-    }
-    print_key(key);
-}
-
-fn vector_contains(vec: &[String], str: &str) -> bool {
-    vec.iter().any(|s| s == str)
-}
 
 fn cell_contains(cell: &Cell, key: &str) -> bool {
     cell.contains(key)

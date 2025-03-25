@@ -750,6 +750,66 @@ impl Spreadsheet {
         0
     }
 
+    pub fn topo_sort<'a>(&'a self, starting: &'a Box<Cell>) -> Vec<&'a Box<Cell>> {
+        // Create an empty result vector (equivalent to Node_l *head = NULL)
+        let mut sorted_nodes = Vec::new();
+        
+        // Create a stack for DFS traversal (equivalent to Node *st_top)
+        let mut stack = Vec::new();
+        stack.push(starting);
+        
+        // Track visited cells using a BTreeSet (equivalent to OrderedSet *visited)
+        let mut visited = BTreeSet::new();
+        
+        // Working stack to simulate recursive DFS with explicit stack
+        let mut work_stack = Vec::new();
+        work_stack.push(starting);
+        
+        while let Some(current) = work_stack.pop() {
+            // Generate cell name for the current node
+            let cell_name = Self::get_cell_name(current.row, current.col);
+            
+            // If we've already processed this cell, skip it
+            if visited.contains(&cell_name) {
+                continue;
+            }
+            
+            // Get dependents of current cell
+            let dependent_keys = self.get_dependent_names(current);
+            let mut all_dependents_visited = true;
+            
+            // Check if all dependents are visited
+            for dep_key in &dependent_keys {
+                if !visited.contains(*dep_key) {
+                    // If we have an unvisited dependent, we need to process it first
+                    if let Some((r, c)) = self.spreadsheet_parse_cell_name(dep_key) {
+                        let dep_index = ((r - 1) * self.cols + (c - 1)) as usize;
+                        if let Some(dep_cell) = self.cells.get(dep_index).and_then(|opt| opt.as_ref()) {
+                            // Push current cell back to work stack
+                            work_stack.push(current);
+                            // Push dependent to work stack to process first
+                            work_stack.push(dep_cell);
+                            all_dependents_visited = false;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // If all dependents are visited, we can add this cell to sorted result
+            if all_dependents_visited {
+                visited.insert(cell_name);
+                sorted_nodes.push(current);
+            }
+        }
+        
+        // Reverse result to match original C implementation order
+        sorted_nodes.reverse();
+        sorted_nodes
+    }
+
+
+
 }
 
 
