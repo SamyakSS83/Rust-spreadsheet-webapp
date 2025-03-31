@@ -3,10 +3,10 @@ use std::collections::BTreeSet; // Using BTreeSet as an AVL-tree-like ordered co
 pub struct Cell {
     pub row: i32,
     pub col: i32,
-    pub value: i32,
     pub error: bool,
+    // pub container: i32, // 0 for Vector, 1 for OrderedSet // We will use match instead
+    pub value: i32,
     pub formula: Option<String>,
-    pub container: i32, // 0 for Vector, 1 for OrderedSet
     pub dependents_initialised: i32,
     pub dependents: Dependents,
 }
@@ -32,14 +32,12 @@ impl Cell {
     }
 
     pub fn dep_insert(&mut self, key: &str) {
-        if self.dependents_initialised == 0 {
-            self.dependents_initialised = 1;
-            self.dependents = Dependents::Vector(Vec::new());
-        }
-
-        if self.container == 0 {
-            // Using Vector
-            if let Dependents::Vector(vec) = &mut self.dependents {
+        match &mut self.dependents {
+            Dependents::None => {
+                self.dependents = Dependents::Vector(Vec::new());
+                vec.push(key.to_string());
+            }
+            Dependents::Vector(vec) => {
                 if vec.len() > 7 {
                     // Convert to OrderedSet
                     let mut set = BTreeSet::new();
@@ -48,14 +46,12 @@ impl Cell {
                     }
                     set.insert(key.to_string());
                     self.dependents = Dependents::Set(set);
-                    self.container = 1;
+                    // self.container = 1;
                 } else {
                     vec.push(key.to_string());
                 }
             }
-        } else {
-            // Using OrderedSet
-            if let Dependents::Set(set) = &mut self.dependents {
+            Dependents::Set(set) => {
                 set.insert(key.to_string());
             }
         }
