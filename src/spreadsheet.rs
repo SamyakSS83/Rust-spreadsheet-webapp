@@ -12,6 +12,7 @@ pub struct Spreadsheet {
     pub view_row: i32,
     pub view_col: i32,
     pub cells: Vec<Option<Box<Cell>>>,
+    // pub cells: Vec<Vec<Option<Cell>>>,
 }
 
 impl Spreadsheet {

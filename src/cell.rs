@@ -25,7 +25,6 @@ impl Cell {
             value: 0,
             error: false,
             formula: None,
-            container: 0,
             dependents_initialised: 0,
             dependents: Dependents::None,
         }
@@ -34,8 +33,9 @@ impl Cell {
     pub fn dep_insert(&mut self, key: &str) {
         match &mut self.dependents {
             Dependents::None => {
-                self.dependents = Dependents::Vector(Vec::new());
-                vec.push(key.to_string());
+                let mut v = Vec::new();
+                v.push(key.to_string());
+                self.dependents = Dependents::Vector(v);
             }
             Dependents::Vector(vec) => {
                 if vec.len() > 7 {
