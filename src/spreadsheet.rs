@@ -1,10 +1,10 @@
-use std::collections::BTreeSet;
-use crate::cell::{cell_create, Cell};
+use crate::cell::{Cell, cell_create};
 use bincode;
-use flate2::{Compression, write::GzEncoder, read::GzDecoder};
-use serde::{Serialize, Deserialize};
+use flate2::{Compression, read::GzDecoder, write::GzEncoder};
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::fs::File;
-use std::io::{Write, Read};
+use std::io::{Read, Write};
 
 pub struct Spreadsheet {
     pub rows: i32,
@@ -40,8 +40,6 @@ impl Spreadsheet {
         Some(sheet)
     }
 
-    
-
     pub fn col_to_letter(col: i32) -> String {
         let mut col = col;
         let mut result = String::new();
@@ -54,7 +52,9 @@ impl Spreadsheet {
     }
 
     pub fn letter_to_col(letters: &str) -> i32 {
-        letters.chars().fold(0, |acc, c| acc * 26 + (c as i32 - 'A' as i32 + 1))
+        letters
+            .chars()
+            .fold(0, |acc, c| acc * 26 + (c as i32 - 'A' as i32 + 1))
     }
 
     pub fn get_cell_name(row: i32, col: i32) -> String {
@@ -101,61 +101,64 @@ impl Spreadsheet {
     pub fn find_depends(&self, formula: &str) -> Result<(i32, i32, i32, i32, bool), &'static str> {
         let mut range_bool = false;
         let ranges = ["MIN", "MAX", "AVG", "SUM", "STDEV"];
-        
+
         // Check if formula starts with a range function
         for range in &ranges {
             if formula.starts_with(range) {
                 range_bool = true;
-                
+
                 // Find opening bracket
                 if let Some(bracket_pos) = formula.find('(') {
                     let new_formula = &formula[bracket_pos + 1..];
-                    
+
                     // Extract range without closing bracket
                     if let Some(closing_bracket_pos) = new_formula.find(')') {
                         let only_range = &new_formula[..closing_bracket_pos];
-                        
+
                         // Parse the range in the format "A1:B2"
                         if let Some(colon_pos) = only_range.find(':') {
                             let start_cell = &only_range[..colon_pos];
                             let end_cell = &only_range[colon_pos + 1..];
-                            
+
                             // Parse start and end cells
-                            if let Some((row1, col1)) = self.spreadsheet_parse_cell_name(start_cell) {
-                                if let Some((row2, col2)) = self.spreadsheet_parse_cell_name(end_cell) {
+                            if let Some((row1, col1)) = self.spreadsheet_parse_cell_name(start_cell)
+                            {
+                                if let Some((row2, col2)) =
+                                    self.spreadsheet_parse_cell_name(end_cell)
+                                {
                                     // Check if range is valid
                                     if col2 < col1 || (col1 == col2 && row2 < row1) {
                                         return Err("Invalid formula format");
                                     }
-                                    
+
                                     // Convert to 0-based index (like in C version)
                                     let row1 = row1 - 1;
                                     let row2 = row2 - 1;
-                                    
+
                                     return Ok((row1, row2, col1, col2, range_bool));
                                 }
                             }
                         }
                     }
                 }
-                
+
                 return Err("Invalid range format");
             }
         }
-        
+
         // Not a range function, look for cell references
         let mut r1 = -1;
         let mut r2 = -1;
         let mut c1 = -1;
         let mut c2 = -1;
-        
+
         // Use regex to find cell references like A1, B2, etc.
         let re = regex::Regex::new(r"([A-Za-z]+[0-9]+)").unwrap();
         let mut count = 0;
-        
+
         for cap in re.captures_iter(formula) {
             let ref_str = &cap[1];
-            
+
             if count == 0 {
                 if let Some((row, col)) = self.spreadsheet_parse_cell_name(ref_str) {
                     r1 = row;
@@ -167,18 +170,24 @@ impl Spreadsheet {
                     c2 = col;
                 }
             }
-            
+
             count += 1;
         }
-        
+
         Ok((r1, r2, c1, c2, range_bool))
     }
-    
-    pub fn spreadsheet_evaluate_function(&self, func: &str, args: &str, cell: &mut Cell, expr: &str) -> i32 {
+
+    pub fn spreadsheet_evaluate_function(
+        &self,
+        func: &str,
+        args: &str,
+        cell: &mut Cell,
+        expr: &str,
+    ) -> i32 {
         // SLEEP function
         if func.eq_ignore_ascii_case("SLEEP") {
             let mut val = 0;
-            
+
             // Case 1: args is a numeric value
             if Self::is_numeric(args) {
                 val = args.parse::<i32>().unwrap_or(0);
@@ -194,7 +203,7 @@ impl Spreadsheet {
                 } else {
                     args
                 };
-                
+
                 if let Some((row, col)) = self.spreadsheet_parse_cell_name(args_str) {
                     let index = ((row - 1) * self.cols + (col - 1)) as usize;
                     if index < self.cells.len() {
@@ -213,27 +222,27 @@ impl Spreadsheet {
                     }
                 }
             }
-            
+
             // Sleep if value is positive
             if val > 0 {
                 std::thread::sleep(std::time::Duration::from_secs(val as u64));
             }
-            
+
             return val;
         }
-        
+
         // Evaluate range functions
         let count: i32;
         let result = self.find_depends(expr);
-        
+
         if let Ok((r1, r2, c1, c2, _range_bool)) = result {
             // Convert from 0-based to 1-based index for consistency with C code
             let r1 = r1 + 1;
             let r2 = r2 + 1;
-            
+
             count = (r2 - r1 + 1) * (c2 - c1 + 1);
             let mut values = Vec::with_capacity(count as usize);
-            
+
             for i in r1..=r2 {
                 for j in c1..=c2 {
                     let index = ((i - 1) * self.cols + (j - 1)) as usize;
@@ -250,7 +259,7 @@ impl Spreadsheet {
                     }
                 }
             }
-            
+
             if func.eq_ignore_ascii_case("MIN") {
                 if values.is_empty() {
                     return 0;
@@ -277,25 +286,27 @@ impl Spreadsheet {
                 if values.len() < 2 {
                     return 0;
                 }
-                
+
                 let mean = values.iter().sum::<i32>() as f64 / values.len() as f64;
-                let variance = values.iter()
+                let variance = values
+                    .iter()
                     .map(|&x| {
                         let diff = x as f64 - mean;
                         diff * diff
                     })
-                    .sum::<f64>() / values.len() as f64;
-                
+                    .sum::<f64>()
+                    / values.len() as f64;
+
                 cell.error = false;
                 return (variance.sqrt().round()) as i32;
             }
         }
-        
+
         // Unknown function
         0
     }
 
-    pub fn spreadsheet_evaluate_expression(& self, expr: &str, cell: &mut Cell) -> i32 {
+    pub fn spreadsheet_evaluate_expression(&self, expr: &str, cell: &mut Cell) -> i32 {
         if expr.is_empty() {
             return 0;
         }
@@ -329,10 +340,10 @@ impl Spreadsheet {
         let mut i = 0;
         let expr_chars: Vec<char> = expr.chars().collect();
         let len = expr_chars.len();
-        
+
         let mut num1 = 0;
         let mut sign1 = 1;
-        
+
         // Handle sign for first operand
         if i < len && expr_chars[i] == '+' {
             i += 1;
@@ -340,7 +351,7 @@ impl Spreadsheet {
             sign1 = -1;
             i += 1;
         }
-        
+
         // Parse the first operand (either a number or cell reference)
         if i < len && expr_chars[i].is_ascii_digit() {
             // It's a number
@@ -356,15 +367,15 @@ impl Spreadsheet {
             while j < len && expr_chars[j].is_ascii_alphabetic() {
                 j += 1;
             }
-            
+
             let mut k = j;
             while k < len && expr_chars[k].is_ascii_digit() {
                 k += 1;
             }
-            
+
             let cell_name = &expr[i..k];
             i = k;
-            
+
             if let Some((row, col)) = self.spreadsheet_parse_cell_name(cell_name) {
                 let index = ((row - 1) * self.cols + (col - 1)) as usize;
                 if index < self.cells.len() {
@@ -378,23 +389,23 @@ impl Spreadsheet {
                 }
             }
         }
-        
+
         num1 *= sign1;
-        
+
         // If no more characters, just return the first number
         if i >= len {
             cell.error = false;
             return num1;
         }
-        
+
         // Get the operation
         let operation = expr_chars[i];
         i += 1;
-        
+
         // Parse the second operand
         let mut num2 = 0;
         let mut sign2 = 1;
-        
+
         // Handle sign for second operand
         if i < len && expr_chars[i] == '+' {
             i += 1;
@@ -402,7 +413,7 @@ impl Spreadsheet {
             sign2 = -1;
             i += 1;
         }
-        
+
         // Parse the second operand (either a number or cell reference)
         if i < len && expr_chars[i].is_ascii_digit() {
             // It's a number
@@ -417,14 +428,14 @@ impl Spreadsheet {
             while j < len && expr_chars[j].is_ascii_alphabetic() {
                 j += 1;
             }
-            
+
             let mut k = j;
             while k < len && expr_chars[k].is_ascii_digit() {
                 k += 1;
             }
-            
+
             let cell_name = &expr[i..k];
-            
+
             if let Some((row, col)) = self.spreadsheet_parse_cell_name(cell_name) {
                 let index = ((row - 1) * self.cols + (col - 1)) as usize;
                 if index < self.cells.len() {
@@ -438,9 +449,9 @@ impl Spreadsheet {
                 }
             }
         }
-        
+
         num2 *= sign2;
-        
+
         // Perform the operation
         cell.error = false;
         match operation {
@@ -454,7 +465,7 @@ impl Spreadsheet {
                 } else {
                     num1 / num2
                 }
-            },
+            }
             _ => {
                 cell.error = true;
                 -1
@@ -462,41 +473,46 @@ impl Spreadsheet {
         }
     }
 
-    pub fn rec_find_cycle_using_stack<'a>(&'a self, r1: i32, r2: i32, c1: i32, c2: i32, 
-                                       range_bool: bool, visited: &mut BTreeSet<String>, 
-                                       stack: &mut Vec<&'a Box<Cell>>) -> bool {
+    pub fn rec_find_cycle_using_stack<'a>(
+        &'a self,
+        r1: i32,
+        r2: i32,
+        c1: i32,
+        c2: i32,
+        range_bool: bool,
+        visited: &mut BTreeSet<String>,
+        stack: &mut Vec<&'a Box<Cell>>,
+    ) -> bool {
         while !stack.is_empty() {
             let my_node = stack.pop().unwrap();
-            
+
             // Generate cell name for the current node
             let cell_name = Self::get_cell_name(my_node.row, my_node.col);
-            
+
             // Check if we've already visited this cell
             if visited.contains(&cell_name) {
-                continue;  // Skip cells we've already processed
+                continue; // Skip cells we've already processed
             }
-            
+
             // Mark as visited
             visited.insert(cell_name);
-            
+
             // Check if the cell is part of the target range
             let in_range = if range_bool {
                 // For range functions (SUM, AVG, etc.)
-                my_node.row >= r1 && my_node.row <= r2 && 
-                my_node.col >= c1 && my_node.col <= c2
+                my_node.row >= r1 && my_node.row <= r2 && my_node.col >= c1 && my_node.col <= c2
             } else {
                 // For direct cell references
-                (my_node.row == r1 && my_node.col == c1) || 
-                (my_node.row == r2 && my_node.col == c2)
+                (my_node.row == r1 && my_node.col == c1) || (my_node.row == r2 && my_node.col == c2)
             };
-            
+
             if in_range {
                 // Cycle detected
                 return true;
             } else {
                 // Check all dependent cells using our helper method
                 let dependent_names = self.get_dependent_names(my_node);
-                
+
                 for dependent_name in dependent_names {
                     if !visited.contains(dependent_name) {
                         if let Some((r, c)) = self.spreadsheet_parse_cell_name(dependent_name) {
@@ -511,20 +527,27 @@ impl Spreadsheet {
                 }
             }
         }
-        
+
         // No cycle found
         false
     }
 
     // Helper method to check for cycles before updating a cell
-    pub fn check_for_cycle<'a>(&'a self, r1: i32, r2: i32, c1: i32, c2: i32, 
-                           range_bool: bool, curr_cell: &'a Box<Cell>) -> bool {
+    pub fn check_for_cycle<'a>(
+        &'a self,
+        r1: i32,
+        r2: i32,
+        c1: i32,
+        c2: i32,
+        range_bool: bool,
+        curr_cell: &'a Box<Cell>,
+    ) -> bool {
         let mut visited = BTreeSet::new();
         let mut stack = Vec::new();
-        
+
         // Start DFS from the current cell
         stack.push(curr_cell);
-        
+
         self.rec_find_cycle_using_stack(r1, r2, c1, c2, range_bool, &mut visited, &mut stack)
     }
 
@@ -534,18 +557,18 @@ impl Spreadsheet {
             crate::cell::Dependents::Vector(vec) => {
                 // For Vector, simply clone all elements
                 vec.iter().cloned().collect()
-            },
+            }
             crate::cell::Dependents::Set(set) => {
                 // For BTreeSet, also simply clone all elements (already ordered)
                 set.iter().cloned().collect()
-            },
+            }
             crate::cell::Dependents::None => {
                 // No dependents
                 Vec::new()
             }
         }
     }
-    
+
     // Count the number of dependent cells
     pub fn count_dependent_cells(&self, cell: &Box<Cell>) -> usize {
         match &cell.dependents {
@@ -554,7 +577,7 @@ impl Spreadsheet {
             crate::cell::Dependents::None => 0,
         }
     }
-    
+
     // Helper method for the rec_find_cycle_using_stack function - simplifies dependent collection
     pub fn get_dependent_names<'a>(&self, cell: &'a Box<Cell>) -> Vec<&'a String> {
         match &cell.dependents {
@@ -565,29 +588,37 @@ impl Spreadsheet {
     }
 
     // Entry point for cycle detection - checks if a given cell could create a cycle
-    pub fn first_step_find_cycle(&self, cell_name: &str, r1: i32, r2: i32, c1: i32, c2: i32, range_bool: bool) -> bool {
+    pub fn first_step_find_cycle(
+        &self,
+        cell_name: &str,
+        r1: i32,
+        r2: i32,
+        c1: i32,
+        c2: i32,
+        range_bool: bool,
+    ) -> bool {
         // Parse the cell name to get row and column indices
         let (r_, c_) = match self.spreadsheet_parse_cell_name(cell_name) {
             Some(coords) => coords,
             None => return false, // Invalid cell name
         };
-        
+
         // Get the index of the cell in the flattened vector
         let index = ((r_ - 1) * self.cols + (c_ - 1)) as usize;
-        
+
         // Get the cell from the spreadsheet
         let start_node = match &self.cells[index] {
             Some(cell) => cell,
             None => return false, // Cell doesn't exist
         };
-        
+
         // Create a visited set and stack for cycle detection
         let mut visited = BTreeSet::new();
         let mut stack = Vec::new();
-        
+
         // Start DFS from the current cell
         stack.push(start_node);
-        
+
         // Call the recursive helper to find cycles
         self.rec_find_cycle_using_stack(r1, r2, c1, c2, range_bool, &mut visited, &mut stack)
     }
@@ -605,7 +636,7 @@ impl Spreadsheet {
         } else {
             None
         };
-        
+
         // Process formula if it exists
         if let Some(formula) = formula_and_deps {
             let ranges = ["MIN", "MAX", "AVG", "SUM", "STDEV"];
@@ -617,25 +648,24 @@ impl Spreadsheet {
                         (formula.find('('), formula.find(')'))
                     {
                         let only_range = &formula[open_paren_idx + 1..close_paren_idx];
-                        
+
                         if let Some(colon_pos) = only_range.find(':') {
                             let start_cell_str = only_range[..colon_pos].trim();
                             let end_cell_str = only_range[colon_pos + 1..].trim();
-                            
-                            if let (Some((start_row, start_col)),
-                                    Some((end_row, end_col))) =
-                                (
-                                    self.spreadsheet_parse_cell_name(start_cell_str),
-                                    self.spreadsheet_parse_cell_name(end_cell_str)
-                                )
-                            {
+
+                            if let (Some((start_row, start_col)), Some((end_row, end_col))) = (
+                                self.spreadsheet_parse_cell_name(start_cell_str),
+                                self.spreadsheet_parse_cell_name(end_cell_str),
+                            ) {
                                 // Convert to 0-based indices and iterate over the range.
                                 for r in (start_row - 1)..=(end_row - 1) {
                                     for c in start_col..=end_col {
                                         let dep_index = (r * self.cols + (c - 1)) as usize;
-                                        
-                                        if let Some(dep_cell) =
-                                            self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
+
+                                        if let Some(dep_cell) = self
+                                            .cells
+                                            .get_mut(dep_index)
+                                            .and_then(|opt| opt.as_mut())
                                         {
                                             crate::cell::cell_dep_remove(dep_cell, cell_name);
                                         }
@@ -648,22 +678,26 @@ impl Spreadsheet {
                     break;
                 }
             }
-            
+
             // Non-range formula: remove dependency from the two cell references found.
             if !processed_range {
                 if let Ok((dep_r1, dep_r2, dep_c1, dep_c2, _)) = self.find_depends(&formula) {
                     if dep_r1 > 0 {
                         let dep_index = ((dep_r1 - 1) * self.cols + (dep_c1 - 1)) as usize;
-                        
-                        if let Some(dep_cell) = self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut()) {
+
+                        if let Some(dep_cell) =
+                            self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
+                        {
                             crate::cell::cell_dep_remove(dep_cell, cell_name);
                         }
                     }
-                    
+
                     if dep_r2 > 0 {
                         let dep_index = ((dep_r2 - 1) * self.cols + (dep_c2 - 1)) as usize;
-                        
-                        if let Some(dep_cell) = self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut()) {
+
+                        if let Some(dep_cell) =
+                            self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
+                        {
                             crate::cell::cell_dep_remove(dep_cell, cell_name);
                         }
                     }
@@ -697,14 +731,14 @@ impl Spreadsheet {
                         // Expect a format like "A1:B3"
                         let parts: Vec<&str> = only_range.split(':').collect();
                         if parts.len() == 2 {
-                            if let (Some((start_row, start_col)), Some((end_row, end_col))) =
-                                (self.spreadsheet_parse_cell_name(parts[0].trim()),
-                                 self.spreadsheet_parse_cell_name(parts[1].trim()))
-                            {
+                            if let (Some((start_row, start_col)), Some((end_row, end_col))) = (
+                                self.spreadsheet_parse_cell_name(parts[0].trim()),
+                                self.spreadsheet_parse_cell_name(parts[1].trim()),
+                            ) {
                                 // Convert to 0-based indices for rows (columns remain 1-based in our indexing)
                                 let r1 = start_row - 1;
                                 let r2 = end_row - 1;
-                                
+
                                 // Check validity as in the C code:
                                 if end_col < start_col || (start_col == end_col && r2 < r1) {
                                     return -1;
@@ -714,7 +748,8 @@ impl Spreadsheet {
                                 for r in r1..=r2 {
                                     for c in start_col..=end_col {
                                         let dep_index = (r * self.cols + (c - 1)) as usize;
-                                        if let Some(dep_cell) = self.cells
+                                        if let Some(dep_cell) = self
+                                            .cells
                                             .get_mut(dep_index)
                                             .and_then(|opt| opt.as_mut())
                                         {
@@ -735,18 +770,16 @@ impl Spreadsheet {
             if let Ok((dep_r1, dep_r2, dep_c1, dep_c2, _)) = self.find_depends(formula) {
                 if dep_r1 > 0 {
                     let dep_index = ((dep_r1 - 1) * self.cols + (dep_c1 - 1)) as usize;
-                    if let Some(dep_cell) = self.cells
-                        .get_mut(dep_index)
-                        .and_then(|opt| opt.as_mut())
+                    if let Some(dep_cell) =
+                        self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
                     {
                         crate::cell::cell_dep_insert(dep_cell, cell_name);
                     }
                 }
                 if dep_r2 > 0 {
                     let dep_index = ((dep_r2 - 1) * self.cols + (dep_c2 - 1)) as usize;
-                    if let Some(dep_cell) = self.cells
-                        .get_mut(dep_index)
-                        .and_then(|opt| opt.as_mut())
+                    if let Some(dep_cell) =
+                        self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
                     {
                         crate::cell::cell_dep_insert(dep_cell, cell_name);
                     }
@@ -759,38 +792,40 @@ impl Spreadsheet {
     pub fn topo_sort<'a>(&'a self, starting: &'a Box<Cell>) -> Vec<&'a Box<Cell>> {
         // Create an empty result vector (equivalent to Node_l *head = NULL)
         let mut sorted_nodes = Vec::new();
-        
+
         // Create a stack for DFS traversal (equivalent to Node *st_top)
         let mut stack = Vec::new();
         stack.push(starting);
-        
+
         // Track visited cells using a BTreeSet (equivalent to OrderedSet *visited)
         let mut visited = BTreeSet::new();
-        
+
         // Working stack to simulate recursive DFS with explicit stack
         let mut work_stack = Vec::new();
         work_stack.push(starting);
-        
+
         while let Some(current) = work_stack.pop() {
             // Generate cell name for the current node
             let cell_name = Self::get_cell_name(current.row, current.col);
-            
+
             // If we've already processed this cell, skip it
             if visited.contains(&cell_name) {
                 continue;
             }
-            
+
             // Get dependents of current cell
             let dependent_keys = self.get_dependent_names(current);
             let mut all_dependents_visited = true;
-            
+
             // Check if all dependents are visited
             for dep_key in &dependent_keys {
                 if !visited.contains(*dep_key) {
                     // If we have an unvisited dependent, we need to process it first
                     if let Some((r, c)) = self.spreadsheet_parse_cell_name(dep_key) {
                         let dep_index = ((r - 1) * self.cols + (c - 1)) as usize;
-                        if let Some(dep_cell) = self.cells.get(dep_index).and_then(|opt| opt.as_ref()) {
+                        if let Some(dep_cell) =
+                            self.cells.get(dep_index).and_then(|opt| opt.as_ref())
+                        {
                             // Push current cell back to work stack
                             work_stack.push(current);
                             // Push dependent to work stack to process first
@@ -801,23 +836,82 @@ impl Spreadsheet {
                     }
                 }
             }
-            
+
             // If all dependents are visited, we can add this cell to sorted result
             if all_dependents_visited {
                 visited.insert(cell_name);
                 sorted_nodes.push(current);
             }
         }
-        
+
         // Reverse result to match original C implementation order
         sorted_nodes.reverse();
         sorted_nodes
     }
 
-    
-        
+    pub fn spreadsheet_set_cell_value(
+        &mut self,
+        cell_name: &str,
+        formula: &str,
+        status_out: &mut String,
+    ) {
+        if cell_name.is_empty() || formula.is_empty() {
+            *status_out = "invalid args".to_string();
+            return;
+        }
+
+        // Parse cell name to get row and column
+        let (r_, c_) = match self.spreadsheet_parse_cell_name(cell_name) {
+            Some(coords) => coords,
+            None => {
+                *status_out = "invalid args".to_string();
+                return;
+            }
+        };
+
+        // Get the cell
+        let index = ((r_ - 1) * self.cols + (c_ - 1)) as usize;
+        let cell = match self.cells.get_mut(index).and_then(|opt| opt.as_mut()) {
+            Some(cell) => cell,
+            None => {
+                *status_out = "invalid args".to_string();
+                return;
+            }
+        };
+
+        // Find dependencies
+        let (r1, r2, c1, c2, range_bool) = match self.find_depends(formula) {
+            Ok(deps) => deps,
+            Err(_) => {
+                *status_out = "invalid command".to_string();
+                return;
+            }
+        };
+
+        // Check for cycles
+        if self.first_step_find_cycle(cell_name, r1, r2, c1, c2, range_bool) {
+            *status_out = "Cycle Detected".to_string();
+            return;
+        }
+
+        // Update dependencies
+        self.update_dependencies(cell_name, formula);
+
+        // Update the cell's formula
+        cell.formula = Some(formula.to_string());
+
+        // Perform topological sort
+        let sorted_cells = self.topo_sort(cell);
+
+        // Evaluate expressions for all cells in topological order
+        for sorted_cell in sorted_cells {
+            let value = self.spreadsheet_evaluate_expression(
+                sorted_cell.formula.as_deref().unwrap_or(""),
+                (sorted_cell),
+            );
+            sorted_cell.value = value;
+        }
+
+        *status_out = "ok".to_string();
     }
-
-
-
-
+}
