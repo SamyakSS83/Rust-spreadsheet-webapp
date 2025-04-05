@@ -481,8 +481,8 @@ impl Spreadsheet {
     //     }
     // }
 
-    pub fn spreadsheet_evaluate_expression(&self, row:usize , col:usize) -> (i32,bool) {
-        let expr = self.cells[row * (self.cols as usize) + col].as_ref().unwrap().formula.as_ref().unwrap();
+    pub fn spreadsheet_evaluate_expression(&self,expr: &str, row:usize , col:usize) -> (i32,bool) {
+        // let expr = self.cells[row * (self.cols as usize) + col].as_ref().unwrap().formula.as_ref().unwrap();
         if expr.is_empty() {
             return (0,false);
         }
@@ -1163,8 +1163,16 @@ impl Spreadsheet {
 
         // Evaluate expressions for all cells in topological order
         for (row,col) in sorted_cells {
+            // immutable borrow of cell, to pass expr, although this is not needed, it can be removed
+            let cell = match self.cells.get(index).and_then(|opt| opt.as_ref()) {
+                Some(cell) => cell,
+                None => {
+                    *status_out = "invalid args".to_string();
+                    return;
+                }
+            };
             let (value,error_cell) = self.spreadsheet_evaluate_expression(
-                // sorted_cell.formula.as_deref().unwrap_or(""),
+                cell.formula.as_deref().unwrap_or(""),
                 row as usize,
                 col as usize,
                 
