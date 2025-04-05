@@ -17,3 +17,7 @@ path = "src/bin/cell_test.rs"
 [[bin]]
 name = "spreadsheet_test"
 path = "src/bin/spreadsheet_test.rs"
+
+[lib]
+name = "cop"
+path = "src/lib.rs"

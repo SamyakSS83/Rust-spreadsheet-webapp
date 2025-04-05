@@ -354,7 +354,7 @@ fn test_spreadsheet_evaluate_function() {
     );
     // Standard deviation of [10,20,30,40] = sqrt((10-25)²+(20-25)²+(30-25)²+(40-25)²/4)
     // = sqrt((−15)²+(−5)²+5²+15²/4) = sqrt(225+25+25+225/4) = sqrt(500/4) = sqrt(125) ≈ 11
-    assert_eq!(result, (11,true)); // Using integer rounding
+    assert_eq!(result, (11,false)); // Using integer rounding
     // assert!(!test_cell.error);
     println!("✓ STDEV(A1:B2) = {:?} (expected ~11)", result);
     
@@ -441,7 +441,7 @@ fn test_spreadsheet_evaluate_expression() {
     
     // Test division by zero
     let result = sheet.spreadsheet_evaluate_expression("10/0", 1,1);
-    assert_eq!(result, (0,false));
+    assert_eq!(result, (0,true));
     // assert!(test_cell.error);
     println!("✓ Expression '10/0' sets error flag correctly");
     
