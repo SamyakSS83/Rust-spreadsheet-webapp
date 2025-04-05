@@ -31,6 +31,9 @@ impl Cell {
     }
 
     pub fn dep_insert(&mut self, key: &str) {
+        // Set the initialised flag to 1 whenever a dependency is added
+        self.dependents_initialised = 1;
+        
         match &mut self.dependents {
             Dependents::None => {
                 let mut v = Vec::new();
@@ -80,6 +83,7 @@ impl Cell {
             Dependents::None => false,
         }
     }
+    
 }
 
 // Public interface functions that match the C API
@@ -94,4 +98,8 @@ pub fn cell_dep_insert(cell: &mut Cell, key: &str) {
 
 pub fn cell_dep_remove(cell: &mut Cell, key: &str) {
     cell.dep_remove(key);
+}
+
+pub fn cell_contains(cell: &Cell, key: &str) -> bool {
+    cell.contains(key)
 }
