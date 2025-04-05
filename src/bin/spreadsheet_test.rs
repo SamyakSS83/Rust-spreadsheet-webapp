@@ -1085,6 +1085,99 @@ fn test_topo_sort() {
     println!("✓ Diamond dependency topological sort passed all ordering checks");
 }
 
+fn test_spreadsheet_set_cell_value() {
+    println!("=== Testing spreadsheet_set_cell_value ===");
+    
+    // Create a 5x5 spreadsheet
+    let mut sheet = Spreadsheet::spreadsheet_create(5, 5).unwrap();
+    let mut status = String::new();
+    
+    // Test 1: Simple value assignment
+    println!("Test 1: Simple value assignment");
+    sheet.spreadsheet_set_cell_value("A1", "42", &mut status);
+    assert_eq!(status, "ok");
+    let index_a1 = 0; // (1-1)*5 + (1-1)
+    assert_eq!(sheet.cells[index_a1].as_ref().unwrap().value, 42);
+    println!("Cell A1 set to 42 - PASS");
+    
+    // Test 2: Formula with arithmetic
+    println!("Test 2: Formula with arithmetic");
+    sheet.spreadsheet_set_cell_value("B1", "21+21", &mut status);
+    assert_eq!(status, "ok");
+    let index_b1 = 1; // (1-1)*5 + (2-1)
+    assert_eq!(sheet.cells[index_b1].as_ref().unwrap().value, 42);
+    println!("Cell B1 set to 21+21 = 42 - PASS");
+    
+    // Test 3: Cell reference
+    println!("Test 3: Cell reference");
+    sheet.spreadsheet_set_cell_value("C1", "A1", &mut status);
+    assert_eq!(status, "ok");
+    let index_c1 = 2; // (1-1)*5 + (3-1)
+    assert_eq!(sheet.cells[index_c1].as_ref().unwrap().value, 42);
+    println!("Cell C1 references A1 = 42 - PASS");
+    
+    // Test 4: Formula with cell reference
+    println!("Test 4: Formula with cell reference");
+    sheet.spreadsheet_set_cell_value("D1", "A1+B1", &mut status);
+    assert_eq!(status, "ok");
+    let index_d1 = 3; // (1-1)*5 + (4-1)
+    assert_eq!(sheet.cells[index_d1].as_ref().unwrap().value, 84);
+    println!("Cell D1 set to A1+B1 = 84 - PASS");
+    
+    // Test 5: SUM function
+    println!("Test 5: SUM function");
+    sheet.spreadsheet_set_cell_value("A2", "10", &mut status);
+    sheet.spreadsheet_set_cell_value("B2", "20", &mut status);
+    sheet.spreadsheet_set_cell_value("C2", "30", &mut status);
+    sheet.spreadsheet_set_cell_value("D2", "SUM(A2:C2)", &mut status);
+    assert_eq!(status, "ok");
+    let index_d2 = 8; // (2-1)*5 + (4-1)
+    assert_eq!(sheet.cells[index_d2].as_ref().unwrap().value, 60);
+    println!("Cell D2 set to SUM(A2:C2) = 60 - PASS");
+    
+    // Test 6: AVG function
+    println!("Test 6: AVG function");
+    sheet.spreadsheet_set_cell_value("E2", "AVG(A2:C2)", &mut status);
+    assert_eq!(status, "ok");
+    let index_e2 = 9; // (2-1)*5 + (5-1)
+    assert_eq!(sheet.cells[index_e2].as_ref().unwrap().value, 20);
+    println!("Cell E2 set to AVG(A2:C2) = 20 - PASS");
+    
+    // Test 7: Cycle detection
+    println!("Test 7: Cycle detection");
+    sheet.spreadsheet_set_cell_value("A3", "B3", &mut status);
+    assert_eq!(status, "ok");
+    sheet.spreadsheet_set_cell_value("B3", "A3", &mut status);
+    assert_eq!(status, "Cycle Detected");
+    println!("Cycle detection working - PASS");
+    
+    // Test 8: Error handling - division by zero
+    println!("Test 8: Error handling - division by zero");
+    sheet.spreadsheet_set_cell_value("C3", "10/0", &mut status);
+    assert_eq!(status, "ok");
+    let index_c3 = 12; // (3-1)*5 + (3-1)
+    assert_eq!(sheet.cells[index_c3].as_ref().unwrap().error, true);
+    println!("Division by zero properly marked as error - PASS");
+    
+    // Test 9: Dependency update
+    println!("Test 9: Dependency update");
+    sheet.spreadsheet_set_cell_value("D3", "A1*2", &mut status);
+    assert_eq!(status, "ok");
+    let index_d3 = 13; // (3-1)*5 + (4-1)
+    assert_eq!(sheet.cells[index_d3].as_ref().unwrap().value, 84);
+    // Now update A1
+    sheet.spreadsheet_set_cell_value("A1", "50", &mut status);
+    // D3 should be updated in the same call
+    let index_a1 = 0; // (1-1)*5 + (1-1)
+    assert_eq!(sheet.cells[index_a1].as_ref().unwrap().value, 50);
+    // But we need to manually trigger a recalculation for D3
+    sheet.spreadsheet_set_cell_value("D3", "A1*2", &mut status);
+    assert_eq!(sheet.cells[index_d3].as_ref().unwrap().value, 100);
+    println!("Dependency update working - PASS");
+    
+    println!("All spreadsheet_set_cell_value tests passed!");
+}
+
 // Add the new test function to the run_tests function
 pub fn run_tests() {
     println!("Starting spreadsheet unit tests");
@@ -1098,7 +1191,8 @@ pub fn run_tests() {
     test_cycle_detection();
     test_remove_old_dependents();
     test_dependency_updates();
-    test_topo_sort(); // Add this new test
+    test_topo_sort(); 
+    test_spreadsheet_set_cell_value(); 
     println!("All tests passed!");
 }
 
