@@ -181,17 +181,17 @@ impl Spreadsheet {
         &self,
         func: &str,
         args: &str,
-        cell: &mut Cell,
         expr: &str,
-    ) -> i32 {
+    ) -> (i32,bool) {
         // SLEEP function
+        let mut error = false; 
         if func.eq_ignore_ascii_case("SLEEP") {
             let mut val = 0;
 
             // Case 1: args is a numeric value
             if Self::is_numeric(args) {
                 val = args.parse::<i32>().unwrap_or(0);
-                cell.error = false;
+                // cell.error = false;
             } else {
                 // Case 2: args is a cell reference
                 let mut sign = 1;
@@ -210,10 +210,12 @@ impl Spreadsheet {
                         if let Some(ref op_cell) = self.cells[index] {
                             val = sign * op_cell.value;
                             if op_cell.error {
-                                cell.error = true;
-                                return val;
+                                // cell.error = true;
+                                error = true;
+                                return (val,error);
                             } else {
-                                cell.error = false;
+                                // cell.error = false;
+                                error = false;
                             }
                         } else {
                             // Cell not found or not initialized, use 0
@@ -228,7 +230,7 @@ impl Spreadsheet {
                 std::thread::sleep(std::time::Duration::from_secs(val as u64));
             }
 
-            return val;
+            return (val,error);
         }
 
         // Evaluate range functions
@@ -249,8 +251,9 @@ impl Spreadsheet {
                     if index < self.cells.len() {
                         if let Some(ref c) = self.cells[index] {
                             if c.error {
-                                cell.error = true;
-                                return 0;
+                                // cell.error = true;
+                                error = true;
+                                return (0,error);
                             }
                             values.push(c.value);
                         } else {
@@ -262,29 +265,33 @@ impl Spreadsheet {
 
             if func.eq_ignore_ascii_case("MIN") {
                 if values.is_empty() {
-                    return 0;
+                    return (0,error);
                 }
-                cell.error = false;
-                return *values.iter().min().unwrap_or(&0);
+                // cell.error = false;
+                error = false;
+                return (*values.iter().min().unwrap_or(&0),error);
             } else if func.eq_ignore_ascii_case("MAX") {
                 if values.is_empty() {
-                    return 0;
+                    return (0,error);
                 }
-                cell.error = false;
-                return *values.iter().max().unwrap_or(&0);
+                // cell.error = false;
+                error = false;
+                return (*values.iter().max().unwrap_or(&0),error);
             } else if func.eq_ignore_ascii_case("SUM") {
-                cell.error = false;
-                return values.iter().sum();
+                // cell.error = false;
+                error = false ;
+                return (values.iter().sum(),error);
             } else if func.eq_ignore_ascii_case("AVG") {
                 if values.is_empty() {
-                    return 0;
+                    return (0,error);
                 }
-                cell.error = false;
+                // cell.error = false;
+                error = false;
                 let sum: i32 = values.iter().sum();
-                return sum / values.len() as i32;
+                return (sum / values.len() as i32,error);
             } else if func.eq_ignore_ascii_case("STDEV") {
                 if values.len() < 2 {
-                    return 0;
+                    return (0,error);
                 }
 
                 let mean = values.iter().sum::<i32>() as f64 / values.len() as f64;
@@ -297,26 +304,205 @@ impl Spreadsheet {
                     .sum::<f64>()
                     / values.len() as f64;
 
-                cell.error = false;
-                return (variance.sqrt().round()) as i32;
+                // cell.error = false;
+                error = false;
+                return ((variance.sqrt().round()) as i32,error);
             }
         }
 
         // Unknown function
-        0
+        (0,error)
     }
 
-    pub fn spreadsheet_evaluate_expression(&self, expr: &str, cell: &mut Cell) -> i32 {
-        if expr.is_empty() {
-            return 0;
-        }
+    // pub fn spreadsheet_evaluate_expression(&self, expr: &str, cell: &mut Cell) -> i32 {
+    //     if expr.is_empty() {
+    //         return 0;
+    //     }
 
-        // Check for function call pattern: FUNC(...)
+    //     // Check for function call pattern: FUNC(...)
+    //     let func_regex = regex::Regex::new(r"^([A-Za-z]+)\((.*)\)$").unwrap();
+    //     if let Some(captures) = func_regex.captures(expr) {
+    //         let func = captures.get(1).unwrap().as_str();
+    //         let args = captures.get(2).unwrap().as_str();
+    //         return self.spreadsheet_evaluate_function(func, args, cell, expr);
+    //     }
+
+    //     // Check if the expr is a cell reference (e.g. A1)
+    //     let cell_regex = regex::Regex::new(r"^[A-Za-z]+[0-9]+$").unwrap();
+    //     if cell_regex.is_match(expr) {
+    //         // It's a cell reference
+    //         if let Some((row, col)) = self.spreadsheet_parse_cell_name(expr) {
+    //             let index = ((row - 1) * self.cols + (col - 1)) as usize;
+    //             if index < self.cells.len() {
+    //                 if let Some(ref c) = self.cells[index] {
+    //                     cell.error = c.error;
+    //                     return c.value;
+    //                 }
+    //             }
+    //         }
+    //         return 0;
+    //     }
+
+    //     // Check for arithmetic operations
+    //     // Parse the first number or cell reference
+    //     let mut i = 0;
+    //     let expr_chars: Vec<char> = expr.chars().collect();
+    //     let len = expr_chars.len();
+
+    //     let mut num1 = 0;
+    //     let mut sign1 = 1;
+
+    //     // Handle sign for first operand
+    //     if i < len && expr_chars[i] == '+' {
+    //         i += 1;
+    //     } else if i < len && expr_chars[i] == '-' {
+    //         sign1 = -1;
+    //         i += 1;
+    //     }
+
+    //     // Parse the first operand (either a number or cell reference)
+    //     if i < len && expr_chars[i].is_ascii_digit() {
+    //         // It's a number
+    //         let mut j = i;
+    //         while j < len && expr_chars[j].is_ascii_digit() {
+    //             num1 = num1 * 10 + (expr_chars[j] as u8 - b'0') as i32;
+    //             j += 1;
+    //         }
+    //         i = j;
+    //     } else if i < len && expr_chars[i].is_ascii_alphabetic() {
+    //         // It's a cell reference
+    //         let mut j = i;
+    //         while j < len && expr_chars[j].is_ascii_alphabetic() {
+    //             j += 1;
+    //         }
+
+    //         let mut k = j;
+    //         while k < len && expr_chars[k].is_ascii_digit() {
+    //             k += 1;
+    //         }
+
+    //         let cell_name = &expr[i..k];
+    //         i = k;
+
+    //         if let Some((row, col)) = self.spreadsheet_parse_cell_name(cell_name) {
+    //             let index = ((row - 1) * self.cols + (col - 1)) as usize;
+    //             if index < self.cells.len() {
+    //                 if let Some(ref c) = self.cells[index] {
+    //                     if c.error {
+    //                         cell.error = true;
+    //                         return 0;
+    //                     }
+    //                     num1 = c.value;
+    //                 }
+    //             }
+    //         }
+    //     }
+
+    //     num1 *= sign1;
+
+    //     // If no more characters, just return the first number
+    //     if i >= len {
+    //         cell.error = false;
+    //         return num1;
+    //     }
+
+    //     // Get the operation
+    //     let operation = expr_chars[i];
+    //     i += 1;
+
+    //     // Parse the second operand
+    //     let mut num2 = 0;
+    //     let mut sign2 = 1;
+
+    //     // Handle sign for second operand
+    //     if i < len && expr_chars[i] == '+' {
+    //         i += 1;
+    //     } else if i < len && expr_chars[i] == '-' {
+    //         sign2 = -1;
+    //         i += 1;
+    //     }
+
+    //     // Parse the second operand (either a number or cell reference)
+    //     if i < len && expr_chars[i].is_ascii_digit() {
+    //         // It's a number
+    //         let mut j = i;
+    //         while j < len && expr_chars[j].is_ascii_digit() {
+    //             num2 = num2 * 10 + (expr_chars[j] as u8 - b'0') as i32;
+    //             j += 1;
+    //         }
+    //     } else if i < len && expr_chars[i].is_ascii_alphabetic() {
+    //         // It's a cell reference
+    //         let mut j = i;
+    //         while j < len && expr_chars[j].is_ascii_alphabetic() {
+    //             j += 1;
+    //         }
+
+    //         let mut k = j;
+    //         while k < len && expr_chars[k].is_ascii_digit() {
+    //             k += 1;
+    //         }
+
+    //         let cell_name = &expr[i..k];
+
+    //         if let Some((row, col)) = self.spreadsheet_parse_cell_name(cell_name) {
+    //             let index = ((row - 1) * self.cols + (col - 1)) as usize;
+    //             if index < self.cells.len() {
+    //                 if let Some(ref c) = self.cells[index] {
+    //                     if c.error {
+    //                         cell.error = true;
+    //                         return 0;
+    //                     }
+    //                     num2 = c.value;
+    //                 }
+    //             }
+    //         }
+    //     }
+
+    //     num2 *= sign2;
+
+    //     // Perform the operation
+    //     cell.error = false;
+    //     match operation {
+    //         '+' => num1 + num2,
+    //         '-' => num1 - num2,
+    //         '*' => num1 * num2,
+    //         '/' => {
+    //             if num2 == 0 {
+    //                 cell.error = true;
+    //                 0
+    //             } else {
+    //                 num1 / num2
+    //             }
+    //         }
+    //         _ => {
+    //             cell.error = true;
+    //             -1
+    //         }
+    //     }
+    // }
+
+    pub fn spreadsheet_evaluate_expression(&self, row:usize , col:usize) -> (i32,bool) {
+        let expr = self.cells[row * (self.cols as usize) + col].as_ref().unwrap().formula.as_ref().unwrap();
+        if expr.is_empty() {
+            return (0,false);
+        }
+        // let index = ((row as i32 - 1) * self.cols + (col as i32 - 1)) as usize;
+        //get mutable reference to cell given row and col 
+        // let cell = match self.cells.get_mut(index).and_then(|opt| opt.as_mut()) {
+        //     Some(cell) => cell,
+        //     None => {
+        //         // Cell not found, return 0 // this won't happen // valid cell already checked in caller
+        //         return 0;
+        //     }
+        // };
+        
+        //Check for function call pattern: FUNC(...)
         let func_regex = regex::Regex::new(r"^([A-Za-z]+)\((.*)\)$").unwrap();
         if let Some(captures) = func_regex.captures(expr) {
             let func = captures.get(1).unwrap().as_str();
             let args = captures.get(2).unwrap().as_str();
-            return self.spreadsheet_evaluate_function(func, args, cell, expr);
+            return  self.spreadsheet_evaluate_function(func, args, expr);
+
         }
 
         // Check if the expr is a cell reference (e.g. A1)
@@ -327,12 +513,12 @@ impl Spreadsheet {
                 let index = ((row - 1) * self.cols + (col - 1)) as usize;
                 if index < self.cells.len() {
                     if let Some(ref c) = self.cells[index] {
-                        cell.error = c.error;
-                        return c.value;
+                        // cell.error = c.error;
+                        return (c.value,c.error);
                     }
                 }
             }
-            return 0;
+            return (0,false);
         }
 
         // Check for arithmetic operations
@@ -381,8 +567,8 @@ impl Spreadsheet {
                 if index < self.cells.len() {
                     if let Some(ref c) = self.cells[index] {
                         if c.error {
-                            cell.error = true;
-                            return 0;
+                            // cell.error = true;
+                            return (0,true);
                         }
                         num1 = c.value;
                     }
@@ -394,8 +580,8 @@ impl Spreadsheet {
 
         // If no more characters, just return the first number
         if i >= len {
-            cell.error = false;
-            return num1;
+            // cell.error = false;
+            return (num1,false);
         }
 
         // Get the operation
@@ -441,8 +627,8 @@ impl Spreadsheet {
                 if index < self.cells.len() {
                     if let Some(ref c) = self.cells[index] {
                         if c.error {
-                            cell.error = true;
-                            return 0;
+                            // cell.error = true;
+                            return (0,true);
                         }
                         num2 = c.value;
                     }
@@ -453,22 +639,22 @@ impl Spreadsheet {
         num2 *= sign2;
 
         // Perform the operation
-        cell.error = false;
+        let mut error = false;
         match operation {
-            '+' => num1 + num2,
-            '-' => num1 - num2,
-            '*' => num1 * num2,
+            '+' => (num1 + num2,error),
+            '-' => (num1 - num2,error),
+            '*' => (num1 * num2,error),
             '/' => {
                 if num2 == 0 {
-                    cell.error = true;
-                    0
+                    error = true;
+                    (0,error)
                 } else {
-                    num1 / num2
+                    (num1 / num2,error)
                 }
             }
             _ => {
-                cell.error = true;
-                -1
+                error = true;
+                (-1,error)
             }
         }
     }
@@ -789,7 +975,69 @@ impl Spreadsheet {
         0
     }
 
-    pub fn topo_sort<'a>(&'a self, starting: &'a Box<Cell>) -> Vec<&'a Box<Cell>> {
+    // pub fn topo_sort<'a>(&'a self, starting: &'a Box<Cell>) -> Vec<&'a Box<Cell>> {
+    //     // Create an empty result vector (equivalent to Node_l *head = NULL)
+    //     let mut sorted_nodes = Vec::new();
+
+    //     // Create a stack for DFS traversal (equivalent to Node *st_top)
+    //     let mut stack = Vec::new();
+    //     stack.push(starting);
+
+    //     // Track visited cells using a BTreeSet (equivalent to OrderedSet *visited)
+    //     let mut visited = BTreeSet::new();
+
+    //     // Working stack to simulate recursive DFS with explicit stack
+    //     let mut work_stack = Vec::new();
+    //     work_stack.push(starting);
+
+    //     while let Some(current) = work_stack.pop() {
+    //         // Generate cell name for the current node
+    //         let cell_name = Self::get_cell_name(current.row, current.col);
+
+    //         // If we've already processed this cell, skip it
+    //         if visited.contains(&cell_name) {
+    //             continue;
+    //         }
+
+    //         // Get dependents of current cell
+    //         let dependent_keys = self.get_dependent_names(current);
+    //         let mut all_dependents_visited = true;
+
+    //         // Check if all dependents are visited
+    //         for dep_key in &dependent_keys {
+    //             if !visited.contains(*dep_key) {
+    //                 // If we have an unvisited dependent, we need to process it first
+    //                 if let Some((r, c)) = self.spreadsheet_parse_cell_name(dep_key) {
+    //                     let dep_index = ((r - 1) * self.cols + (c - 1)) as usize;
+    //                     if let Some(dep_cell) =
+    //                         self.cells.get(dep_index).and_then(|opt| opt.as_ref())
+    //                     {
+    //                         // Push current cell back to work stack
+    //                         work_stack.push(current);
+    //                         // Push dependent to work stack to process first
+    //                         work_stack.push(dep_cell);
+    //                         all_dependents_visited = false;
+    //                         break;
+    //                     }
+    //                 }
+    //             }
+    //         }
+
+    //         // If all dependents are visited, we can add this cell to sorted result
+    //         if all_dependents_visited {
+    //             visited.insert(cell_name);
+    //             sorted_nodes.push(current);
+    //         }
+    //     }
+
+    //     // Reverse result to match original C implementation order
+    //     sorted_nodes.reverse();
+    //     sorted_nodes
+    // }
+
+    // update the topo sort function to return row and col of cells instead of cell references
+
+    pub fn topo_sort(&self,starting:&Box<Cell>) -> Vec<(u32,u32)> {
         // Create an empty result vector (equivalent to Node_l *head = NULL)
         let mut sorted_nodes = Vec::new();
 
@@ -840,7 +1088,7 @@ impl Spreadsheet {
             // If all dependents are visited, we can add this cell to sorted result
             if all_dependents_visited {
                 visited.insert(cell_name);
-                sorted_nodes.push(current);
+                sorted_nodes.push((current.row as u32,current.col as u32));
             }
         }
 
@@ -848,6 +1096,7 @@ impl Spreadsheet {
         sorted_nodes.reverse();
         sorted_nodes
     }
+
 
     pub fn spreadsheet_set_cell_value(
         &mut self,
@@ -871,13 +1120,7 @@ impl Spreadsheet {
 
         // Get the cell
         let index = ((r_ - 1) * self.cols + (c_ - 1)) as usize;
-        let cell = match self.cells.get_mut(index).and_then(|opt| opt.as_mut()) {
-            Some(cell) => cell,
-            None => {
-                *status_out = "invalid args".to_string();
-                return;
-            }
-        };
+        
 
         // Find dependencies
         let (r1, r2, c1, c2, range_bool) = match self.find_depends(formula) {
@@ -897,19 +1140,44 @@ impl Spreadsheet {
         // Update dependencies
         self.update_dependencies(cell_name, formula);
 
+        let cell = match self.cells.get_mut(index).and_then(|opt| opt.as_mut()) {
+            Some(cell) => cell,
+            None => {
+                *status_out = "invalid args".to_string();
+                return;
+            }
+        };
         // Update the cell's formula
         cell.formula = Some(formula.to_string());
-
+        // mutable reference not needed anymore
+        // take cell as immutable 
+        let cell = match self.cells.get(index).and_then(|opt| opt.as_ref()) {
+            Some(cell) => cell,
+            None => {
+                *status_out = "invalid args".to_string();
+                return;
+            }
+        };
         // Perform topological sort
         let sorted_cells = self.topo_sort(cell);
 
         // Evaluate expressions for all cells in topological order
-        for sorted_cell in sorted_cells {
-            let value = self.spreadsheet_evaluate_expression(
-                sorted_cell.formula.as_deref().unwrap_or(""),
-                (sorted_cell),
+        for (row,col) in sorted_cells {
+            let (value,error_cell) = self.spreadsheet_evaluate_expression(
+                // sorted_cell.formula.as_deref().unwrap_or(""),
+                row as usize,
+                col as usize,
+                
             );
+            let sorted_cell = match self.cells.get_mut(index as usize).and_then(|opt| opt.as_mut()) {
+                Some(cell) => cell,
+                None => {
+                    *status_out = "invalid args".to_string();
+                    return;
+                }
+            };
             sorted_cell.value = value;
+            sorted_cell.error = error_cell;
         }
 
         *status_out = "ok".to_string();
