@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rust Spreadsheet</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        
+        #app {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        
+        #toolbar {
+            display: flex;
+            padding: 10px;
+            background-color: #f5f5f5;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        #formula-bar {
+            flex: 1;
+            margin-left: 10px;
+            padding: 5px;
+            font-family: monospace;
+        }
+        
+        #selected-cell {
+            width: 100px;
+            padding: 5px;
+            background-color: #eee;
+            border: 1px solid #ddd;
+            text-align: center;
+        }
+        
+        #grid-container {
+            flex: 1;
+            overflow: auto;
+            position: relative;
+        }
+        
+        #grid {
+            display: grid;
+            grid-template-columns: 50px repeat(var(--cols, 10), 100px);
+            grid-template-rows: 30px repeat(var(--rows, 10), 25px);
+        }
+        
+        .cell {
+            border: 1px solid #ddd;
+            padding: 4px;
+            overflow: hidden;
+            white-space: nowrap;
+            background-color: white;
+        }
+        
+        .header-cell {
+            background-color: #f0f0f0;
+            font-weight: bold;
+            text-align: center;
+            position: sticky;
+            z-index: 10;
+        }
+        
+        .row-header {
+            left: 0;
+            z-index: 20;
+        }
+        
+        .col-header {
+            top: 0;
+        }
+        
+        .corner-header {
+            top: 0;
+            left: 0;
+            z-index: 30;
+        }
+        
+        .selected {
+            background-color: #e6f3ff;
+            border: 1px solid #4d90fe;
+        }
+        
+        .error {
+            background-color: #ffebee;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div id="toolbar">
+            <div id="selected-cell"></div>
+            <input type="text" id="formula-bar" placeholder="Enter formula here...">
+        </div>
+        <div id="grid-container">
+            <div id="grid"></div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const grid = document.getElementById('grid');
+            const formulaBar = document.getElementById('formula-bar');
+            const selectedCellDisplay = document.getElementById('selected-cell');
+            
+            let selectedCell = null;
+            let sheetData = null;
+            
+            // Fetch sheet data
+            async function fetchSheetData() {
+                const response = await fetch('/api/sheet');
+                sheetData = await response.json();
+                renderGrid(sheetData.rows, sheetData.cols);
+                updateCellValues(sheetData.cells);
+            }
+            
+            // Render the grid
+            function renderGrid(rows, cols) {
+                grid.style.setProperty('--rows', rows);
+                grid.style.setProperty('--cols', cols);
+                grid.innerHTML = '';
+                
+                // Add corner cell (empty)
+                const cornerCell = document.createElement('div');
+                cornerCell.className = 'cell header-cell corner-header';
+                grid.appendChild(cornerCell);
+                
+                // Add column headers (A, B, C...)
+                for (let c = 1; c <= cols; c++) {
+                    const colHeader = document.createElement('div');
+                    colHeader.className = 'cell header-cell col-header';
+                    colHeader.textContent = columnToLetter(c);
+                    grid.appendChild(colHeader);
+                }
+                
+                // Add rows with headers
+                for (let r = 1; r <= rows; r++) {
+                    // Row header (1, 2, 3...)
+                    const rowHeader = document.createElement('div');
+                    rowHeader.className = 'cell header-cell row-header';
+                    rowHeader.textContent = r;
+                    grid.appendChild(rowHeader);
+                    
+                    // Regular cells
+                    for (let c = 1; c <= cols; c++) {
+                        const cell = document.createElement('div');
+                        cell.className = 'cell';
+                        cell.dataset.row = r;
+                        cell.dataset.col = c;
+                        cell.dataset.name = columnToLetter(c) + r;
+                        cell.addEventListener('click', () => selectCell(cell));
+                        grid.appendChild(cell);
+                    }
+                }
+            }
+            
+            // Convert column number to letter (1=A, 2=B, etc.)
+            function columnToLetter(col) {
+                let letter = '';
+                while (col > 0) {
+                    col--;
+                    letter = String.fromCharCode(65 + (col % 26)) + letter;
+                    col = Math.floor(col / 26);
+                }
+                return letter;
+            }
+            
+            // Update cell values from data
+            function updateCellValues(cells) {
+                cells.forEach(cellData => {
+                    const selector = `.cell[data-name="${cellData.name}"]`;
+                    const cellElement = document.querySelector(selector);
+                    if (cellElement) {
+                        cellElement.textContent = cellData.value;
+                        if (cellData.error) {
+                            cellElement.classList.add('error');
+                        } else {
+                            cellElement.classList.remove('error');
+                        }
+                        cellElement.dataset.formula = cellData.formula || '';
+                    }
+                });
+            }
+            
+            // Select a cell
+            function selectCell(cell) {
+                // Deselect previously selected cell
+                if (selectedCell) {
+                    selectedCell.classList.remove('selected');
+                }
+                
+                // Select new cell
+                cell.classList.add('selected');
+                selectedCell = cell;
+                selectedCellDisplay.textContent = cell.dataset.name;
+                
+                // Update formula bar
+                formulaBar.value = cell.dataset.formula || '';
+                formulaBar.focus();
+            }
+            
+            // Handle formula submission
+            formulaBar.addEventListener('keydown', async function(e) {
+                if (e.key === 'Enter' && selectedCell) {
+                    const cellName = selectedCell.dataset.name;
+                    const formula = formulaBar.value.trim();
+                    
+                    try {
+                        const response = await fetch('/api/update_cell', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                cell: cellName,
+                                formula: formula
+                            })
+                        });
+                        
+                        const result = await response.json();
+                        
+                        if (result.status === 'ok') {
+                            // Refresh the entire sheet to show all updates
+                            fetchSheetData();
+                            
+                            // Update the current cell immediately for responsiveness
+                            if (result.value !== undefined) {
+                                selectedCell.textContent = result.value;
+                                selectedCell.dataset.formula = formula;
+                            }
+                        } else {
+                            alert(`Error: ${result.status}`);
+                        }
+                    } catch (error) {
+                        console.error('Error updating cell:', error);
+                        alert('Failed to update cell');
+                    }
+                }
+            });
+            
+            // Initialize the grid
+            fetchSheetData();
+        });
+    </script>
+</body>
+</html>

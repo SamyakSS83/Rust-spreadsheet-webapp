@@ -1,16 +1,18 @@
 use std::collections::BTreeSet; // Using BTreeSet as an AVL-tree-like ordered collection
+use serde::{Deserialize, Serialize};
 
+#[derive(Clone, Serialize, Deserialize,Debug)]
 pub struct Cell {
     pub row: i32,
     pub col: i32,
     pub error: bool,
-    // pub container: i32, // 0 for Vector, 1 for OrderedSet // We will use match instead
     pub value: i32,
     pub formula: Option<String>,
     pub dependents_initialised: i32,
     pub dependents: Dependents,
 }
 
+#[derive(Clone, Serialize, Deserialize,Debug)]
 pub enum Dependents {
     Vector(Vec<String>),
     Set(BTreeSet<String>),

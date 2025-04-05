@@ -18,8 +18,10 @@ jobs:
     - uses: actions/checkout@v4
     # - name: Build
     #   run: cargo build --verbose
-    - name: Run tests
+    - name: Run Sheet tests
       run: cargo run --package cop --bin spreadsheet_test 
-    - name: Run tests
-      run: cargo test --package cop --bin cell_test
+    - name: Run Cell tests
+      run: cargo run --package cop --bin cell_test
+    - name : Saving Sheet
+      run: cargo run --package cop --bin saving_test
     

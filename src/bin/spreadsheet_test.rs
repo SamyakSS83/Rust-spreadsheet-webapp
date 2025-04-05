@@ -1134,14 +1134,18 @@ fn test_spreadsheet_set_cell_value() {
     let index_d2 = 8; // (2-1)*5 + (4-1)
     assert_eq!(sheet.cells[index_d2].as_ref().unwrap().value, 60);
     println!("Cell D2 set to SUM(A2:C2) = 60 - PASS");
+    sheet.spreadsheet_set_cell_value("A2", "0", &mut status);
+    assert_eq!(status, "ok");
+    assert_eq!(sheet.cells[index_d2].as_ref().unwrap().value, 50);
+
     
     // Test 6: AVG function
     println!("Test 6: AVG function");
     sheet.spreadsheet_set_cell_value("E2", "AVG(A2:C2)", &mut status);
     assert_eq!(status, "ok");
     let index_e2 = 9; // (2-1)*5 + (5-1)
-    assert_eq!(sheet.cells[index_e2].as_ref().unwrap().value, 20);
-    println!("Cell E2 set to AVG(A2:C2) = 20 - PASS");
+    assert_eq!(sheet.cells[index_e2].as_ref().unwrap().value, 16);
+    println!("Cell E2 set to AVG(A2:C2) = 16 - PASS");
     
     // Test 7: Cycle detection
     println!("Test 7: Cycle detection");

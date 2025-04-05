@@ -5,10 +5,34 @@ edition = "2024"
 
 [dependencies]
 regex = "1.10.2"
-bincode = "2.0.1"
+bincode = "1.3"
 flate2 = "1.0"
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.28", features = ["full"] }
+env_logger = "0.10"
 
+# Web framework and related
+axum = { version = "0.7", features = ["json"] }
+tower-http = { version = "0.5", features = ["fs", "cors", "trace"] }
+
+# Keep existing dependencies for compatibility
+actix-web = "4.3"
+actix-files = "0.6"
+handlebars = { version = "4.3", features = ["dir_source"] }
+web-sys = { version = "0.3", features = [
+    "Document", "Element", "HtmlElement", "Node", "Window", 
+    "HtmlInputElement", "HtmlSelectElement", "EventTarget",
+    "HtmlButtonElement", "Event", "FileReader", "Blob", "File",
+    "HtmlTableElement", "HtmlTableRowElement", "HtmlTableCellElement",
+    "MouseEvent", "KeyboardEvent", "CssStyleDeclaration"
+]}
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+
+[dependencies.getrandom]
+version = "0.2"
+features = ["js"]
 
 [[bin]]
 name = "cell_test"
@@ -17,6 +41,10 @@ path = "src/bin/cell_test.rs"
 [[bin]]
 name = "spreadsheet_test"
 path = "src/bin/spreadsheet_test.rs"
+
+[[bin]]
+name = "saving_test"
+path = "src/bin/saving_test.rs"
 
 [lib]
 name = "cop"
