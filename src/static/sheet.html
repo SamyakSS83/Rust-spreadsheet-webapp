@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rust Spreadsheet</title>
+    <title>Spreadsheet Editor</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -102,19 +102,36 @@
         .error {
             background-color: #ffebee;
         }
-
-        #save-button {
-            margin-left: 10px;
+        
+        #actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .action-button {
             padding: 5px 10px;
-            background-color: #4CAF50;
-            color: white;
             border: none;
             border-radius: 4px;
             cursor: pointer;
+            font-weight: bold;
+        }
+        
+        #save-button {
+            background-color: #4CAF50;
+            color: white;
         }
         
         #save-button:hover {
             background-color: #45a049;
+        }
+        
+        #home-button {
+            background-color: #2196F3;
+            color: white;
+        }
+        
+        #home-button:hover {
+            background-color: #0b7dda;
         }
     </style>
 </head>
@@ -124,7 +141,10 @@
             <div id="selected-cell"></div>
             <div id="display-bar"></div>
             <input type="text" id="formula-bar" placeholder="Enter formula here...">
-            <button id="save-button">Save</button>
+            <div id="actions">
+                <button id="save-button" class="action-button">Save</button>
+                <button id="home-button" class="action-button">Home</button>
+            </div>
         </div>
         <div id="grid-container">
             <div id="grid"></div>
@@ -138,6 +158,7 @@
             const selectedCellDisplay = document.getElementById('selected-cell');
             const displayBar = document.getElementById('display-bar');
             const saveButton = document.getElementById('save-button');
+            const homeButton = document.getElementById('home-button');
             
             let selectedCell = null;
             let sheetData = null;
@@ -204,6 +225,8 @@
             // Update cell values from data
             function updateCellValues(cells) {
                 cells.forEach(cellData => {
+                    if (!cellData.name) return;
+                    
                     const selector = `.cell[data-name="${cellData.name}"]`;
                     const cellElement = document.querySelector(selector);
                     if (cellElement) {
@@ -262,15 +285,11 @@
                         const result = await response.json();
                         
                         if (result.status === 'ok') {
-                            // Refresh the entire sheet to show all updates
+                            // Refresh the sheet to show all updates
                             fetchSheetData();
                             
-                            // Update the current cell immediately for responsiveness
+                            // Update the display bar
                             if (result.value !== undefined) {
-                                selectedCell.textContent = result.value;
-                                selectedCell.dataset.formula = formula;
-                                
-                                // Update display bar
                                 displayBar.textContent = `Value: ${result.value}`;
                                 if (formula) {
                                     displayBar.textContent += ` | Formula: ${formula}`;
@@ -286,6 +305,86 @@
                         console.error('Error updating cell:', error);
                         alert('Failed to update cell');
                     }
+                }
+            });
+            
+            // Handle save button click
+            saveButton.addEventListener('click', async function() {
+                try {
+                    // Check if File System Access API is supported
+                    if ('showSaveFilePicker' in window) {
+                        displayBar.textContent = "Preparing to save...";
+                        
+                        // Set up file save options
+                        const opts = {
+                            suggestedName: 'spreadsheet.bin.gz',
+                            types: [{
+                                description: 'Compressed Spreadsheet File',
+                                accept: {'application/gzip': ['.bin.gz']}
+                            }]
+                        };
+                        
+                        try {
+                            // Show save file picker
+                            const fileHandle = await window.showSaveFilePicker(opts);
+                            
+                            // Request file export from server
+                            const response = await fetch('/api/export', {
+                                method: 'POST'
+                            });
+                            
+                            if (!response.ok) {
+                                throw new Error('Failed to export spreadsheet');
+                            }
+                            
+                            // Get the file blob
+                            const blob = await response.blob();
+                            
+                            // Write to the selected file
+                            const writable = await fileHandle.createWritable();
+                            await writable.write(blob);
+                            await writable.close();
+                            
+                            displayBar.textContent = "Spreadsheet saved successfully!";
+                        } catch (pickErr) {
+                            // User may have cancelled
+                            if (pickErr.name === 'AbortError') {
+                                displayBar.textContent = "Save operation cancelled.";
+                                return;
+                            }
+                            throw pickErr;
+                        }
+                    } else {
+                        // Fallback for browsers without File System Access API
+                        const filename = prompt("Enter filename to save (will be saved with .bin.gz extension):", "spreadsheet");
+                        if (!filename) return;
+                        
+                        displayBar.textContent = "Preparing download...";
+                        
+                        const response = await fetch('/api/export', {
+                            method: 'POST'
+                        });
+                        
+                        if (!response.ok) {
+                            throw new Error('Failed to export spreadsheet');
+                        }
+                        
+                        // Get blob and trigger download
+                        const blob = await response.blob();
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `${filename}.bin.gz`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                        
+                        displayBar.textContent = `Spreadsheet downloaded as ${filename}.bin.gz`;
+                    }
+                } catch (error) {
+                    console.error('Error saving spreadsheet:', error);
+                    displayBar.textContent = `Error: ${error.message}`;
                 }
             });
             
@@ -316,8 +415,8 @@
                     }
                     
                     if (newRow !== currentRow || newCol !== currentCol) {
-                        const newCellName = columnToLetter(newCol) + newRow;
-                        const newCell = document.querySelector(`.cell[data-name="${newCellName}"]`);
+                        const newCellSelector = `.cell[data-row="${newRow}"][data-col="${newCol}"]`;
+                        const newCell = document.querySelector(newCellSelector);
                         if (newCell) {
                             selectCell(newCell);
                             e.preventDefault(); // Prevent default scrolling
@@ -326,27 +425,9 @@
                 }
             });
             
-            // Handle save button click
-            saveButton.addEventListener('click', async function() {
-                try {
-                    const filename = prompt("Enter filename to save (will be saved with .bin.gz extension):", "spreadsheet");
-                    if (!filename) return;
-                    
-                    const response = await fetch(`/api/save?filename=${encodeURIComponent(filename)}.bin.gz`, {
-                        method: 'POST'
-                    });
-                    
-                    const result = await response.json();
-                    
-                    if (result.status === 'ok') {
-                        alert(`Spreadsheet saved successfully as ${filename}.bin.gz`);
-                    } else {
-                        alert(`Error saving spreadsheet: ${result.message}`);
-                    }
-                } catch (error) {
-                    console.error('Error saving spreadsheet:', error);
-                    alert('Failed to save spreadsheet');
-                }
+            // Home button click handler
+            homeButton.addEventListener('click', function() {
+                window.location.href = '/';
             });
             
             // Initialize the grid

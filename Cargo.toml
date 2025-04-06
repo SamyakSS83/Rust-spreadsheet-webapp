@@ -13,7 +13,7 @@ tokio = { version = "1.28", features = ["full"] }
 env_logger = "0.10"
 
 # Web framework and related
-axum = { version = "0.7", features = ["json"] }
+axum = { version = "0.7", features = ["json", "multipart"] }
 tower-http = { version = "0.5", features = ["fs", "cors", "trace"] }
 
 # Keep existing dependencies for compatibility

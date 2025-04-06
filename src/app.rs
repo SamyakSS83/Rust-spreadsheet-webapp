@@ -1,9 +1,10 @@
 use axum::{
-    Json, Router,
-    extract::{Path, Query, State},
-    http::StatusCode,
-    response::{Html, IntoResponse},
+    body::Bytes,
+    extract::{Multipart, Path, Query, State},
+    http::{header, StatusCode},
+    response::{Html, IntoResponse, Response},
     routing::{get, post},
+    Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
@@ -34,6 +35,12 @@ struct SaveQuery {
     filename: String,
 }
 
+#[derive(Deserialize)]
+struct SheetQuery {
+    rows: Option<i32>,
+    cols: Option<i32>,
+}
+
 #[derive(Serialize)]
 struct SaveResponse {
     status: String,
@@ -51,11 +58,14 @@ pub async fn run(rows: i32, cols: i32) -> Result<(), Box<dyn std::error::Error>>
 
     // Build router
     let app = Router::new()
-        .route("/", get(serve_index))
+        .route("/", get(serve_landing))
+        .route("/sheet", get(serve_sheet))
         .route("/api/sheet", get(get_sheet_data))
         .route("/api/cell/:cell_name", get(get_cell))
         .route("/api/update_cell", post(update_cell))
         .route("/api/save", post(save_spreadsheet))
+        .route("/api/export", post(export_spreadsheet))
+        .route("/api/load", post(load_spreadsheet))
         .nest_service("/static", ServeDir::new("static"))
         .with_state(app_state);
 
@@ -67,7 +77,25 @@ pub async fn run(rows: i32, cols: i32) -> Result<(), Box<dyn std::error::Error>>
     Ok(())
 }
 
-async fn serve_index() -> Html<&'static str> {
+async fn serve_landing() -> Html<&'static str> {
+    Html(include_str!("./static/landing.html"))
+}
+
+async fn serve_sheet(
+    Query(params): Query<SheetQuery>,
+    State(state): State<Arc<AppState>>,
+) -> Html<&'static str> {
+    // If dimensions are provided, create a new sheet with those dimensions
+    if let (Some(rows), Some(cols)) = (params.rows, params.cols) {
+        if rows > 0 && rows <= 1000 && cols > 0 && cols <= 18278 {
+            let new_sheet = Spreadsheet::spreadsheet_create(rows, cols)
+                .expect("Failed to create spreadsheet with specified dimensions");
+            
+            let mut current_sheet = state.sheet.lock().unwrap();
+            *current_sheet = new_sheet;
+        }
+    }
+    
     Html(include_str!("./static/sheet.html"))
 }
 
@@ -162,6 +190,116 @@ async fn save_spreadsheet(
         })
         .into_response(),
     }
+}
+
+async fn export_spreadsheet(
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let sheet = state.sheet.lock().unwrap();
+    
+    // Prepare a memory buffer to receive the serialized data
+    let mut buffer = Vec::new();
+    
+    // Try to serialize the spreadsheet to the buffer
+    match serialize_to_memory(&sheet, &mut buffer) {
+        Ok(_) => {
+            // Return the serialized data as a downloadable file
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "application/gzip")
+                .body(axum::body::Body::from(Bytes::from(buffer)))
+                .unwrap()
+        },
+        Err(e) => {
+            // Return error response
+            Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(axum::body::Body::from(serde_json::to_string(&SaveResponse {
+                    status: "error".to_string(),
+                    message: Some(e.to_string()),
+                }).unwrap()))
+                .unwrap()
+        }
+    }
+}
+
+async fn load_spreadsheet(
+    State(state): State<Arc<AppState>>,
+    mut multipart: Multipart,
+) -> impl IntoResponse {
+    // Process the multipart form data
+    let mut file_data = Vec::new();
+    let mut field_name = String::new();
+    
+    while let Some(field) = multipart.next_field().await.unwrap_or(None) {
+        field_name = field.name().unwrap_or("unknown").to_string();
+        
+        if field_name == "spreadsheet" {
+            file_data = field.bytes().await.unwrap_or_default().to_vec();
+        }
+    }
+    
+    if file_data.is_empty() {
+        return Json(SaveResponse {
+            status: "error".to_string(),
+            message: Some("No file data received".to_string()),
+        })
+        .into_response();
+    }
+    
+    // Try to deserialize the spreadsheet
+    match deserialize_from_memory(&file_data) {
+        Ok(loaded_sheet) => {
+            // Update the application's spreadsheet
+            let mut sheet = state.sheet.lock().unwrap();
+            *sheet = loaded_sheet;
+            
+            Json(SaveResponse {
+                status: "ok".to_string(),
+                message: None,
+            })
+            .into_response()
+        },
+        Err(e) => {
+            Json(SaveResponse {
+                status: "error".to_string(),
+                message: Some(format!("Failed to load spreadsheet: {}", e)),
+            })
+            .into_response()
+        }
+    }
+}
+
+// Helper function to serialize a spreadsheet to a memory buffer
+fn serialize_to_memory(spreadsheet: &Spreadsheet, buffer: &mut Vec<u8>) -> std::io::Result<()> {
+    use flate2::Compression;
+    use flate2::write::GzEncoder;
+    use bincode::serialize_into;
+    
+    let encoder = GzEncoder::new(buffer, Compression::default());
+    let mut writer = std::io::BufWriter::new(encoder);
+    
+    serialize_into(&mut writer, spreadsheet)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    
+    Ok(())
+}
+
+// Helper function to deserialize a spreadsheet from a memory buffer
+fn deserialize_from_memory(buffer: &[u8]) -> std::io::Result<Box<Spreadsheet>> {
+    use flate2::read::GzDecoder;
+    use bincode::deserialize_from;
+    use std::io::Cursor;
+    
+    let cursor = Cursor::new(buffer);
+    let decoder = GzDecoder::new(cursor);
+    let mut reader = std::io::BufReader::new(decoder);
+    
+    let spreadsheet: Spreadsheet = deserialize_from(&mut reader)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    
+    Ok(Box::new(spreadsheet))
 }
 
 
