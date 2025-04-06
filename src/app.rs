@@ -11,6 +11,7 @@ use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 
 use crate::spreadsheet::Spreadsheet;
+use crate::saving;
 
 pub struct AppState {
     sheet: Mutex<Box<Spreadsheet>>,
@@ -28,6 +29,17 @@ struct CellResponse {
     value: Option<i32>,
 }
 
+#[derive(Deserialize)]
+struct SaveQuery {
+    filename: String,
+}
+
+#[derive(Serialize)]
+struct SaveResponse {
+    status: String,
+    message: Option<String>,
+}
+
 pub async fn run(rows: i32, cols: i32) -> Result<(), Box<dyn std::error::Error>> {
     // Create spreadsheet
     let sheet = Spreadsheet::spreadsheet_create(rows, cols).expect("Failed to create spreadsheet");
@@ -43,6 +55,7 @@ pub async fn run(rows: i32, cols: i32) -> Result<(), Box<dyn std::error::Error>>
         .route("/api/sheet", get(get_sheet_data))
         .route("/api/cell/:cell_name", get(get_cell))
         .route("/api/update_cell", post(update_cell))
+        .route("/api/save", post(save_spreadsheet))
         .nest_service("/static", ServeDir::new("static"))
         .with_state(app_state);
     
@@ -128,4 +141,22 @@ async fn update_cell(
     }
     
     Json(CellResponse { status, value })
+}
+
+async fn save_spreadsheet(
+    Query(params): Query<SaveQuery>,
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let sheet = state.sheet.lock().unwrap();
+    
+    match saving::save_spreadsheet(&sheet, &params.filename) {
+        Ok(_) => Json(SaveResponse {
+            status: "ok".to_string(),
+            message: None,
+        }).into_response(),
+        Err(e) => Json(SaveResponse {
+            status: "error".to_string(),
+            message: Some(e.to_string()),
+        }).into_response(),
+    }
 }

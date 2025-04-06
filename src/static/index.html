@@ -22,6 +22,7 @@
             padding: 10px;
             background-color: #f5f5f5;
             border-bottom: 1px solid #ddd;
+            align-items: center;
         }
         
         #formula-bar {
@@ -37,6 +38,17 @@
             background-color: #eee;
             border: 1px solid #ddd;
             text-align: center;
+        }
+        
+        #display-bar {
+            width: 200px;
+            padding: 5px;
+            background-color: #f8f8f8;
+            border: 1px solid #ddd;
+            margin-left: 10px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         
         #grid-container {
@@ -90,13 +102,29 @@
         .error {
             background-color: #ffebee;
         }
+
+        #save-button {
+            margin-left: 10px;
+            padding: 5px 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        #save-button:hover {
+            background-color: #45a049;
+        }
     </style>
 </head>
 <body>
     <div id="app">
         <div id="toolbar">
             <div id="selected-cell"></div>
+            <div id="display-bar"></div>
             <input type="text" id="formula-bar" placeholder="Enter formula here...">
+            <button id="save-button">Save</button>
         </div>
         <div id="grid-container">
             <div id="grid"></div>
@@ -108,6 +136,8 @@
             const grid = document.getElementById('grid');
             const formulaBar = document.getElementById('formula-bar');
             const selectedCellDisplay = document.getElementById('selected-cell');
+            const displayBar = document.getElementById('display-bar');
+            const saveButton = document.getElementById('save-button');
             
             let selectedCell = null;
             let sheetData = null;
@@ -200,6 +230,12 @@
                 selectedCell = cell;
                 selectedCellDisplay.textContent = cell.dataset.name;
                 
+                // Update display bar with cell value and formula
+                displayBar.textContent = `Value: ${cell.textContent || '0'}`;
+                if (cell.dataset.formula) {
+                    displayBar.textContent += ` | Formula: ${cell.dataset.formula}`;
+                }
+                
                 // Update formula bar
                 formulaBar.value = cell.dataset.formula || '';
                 formulaBar.focus();
@@ -233,7 +269,16 @@
                             if (result.value !== undefined) {
                                 selectedCell.textContent = result.value;
                                 selectedCell.dataset.formula = formula;
+                                
+                                // Update display bar
+                                displayBar.textContent = `Value: ${result.value}`;
+                                if (formula) {
+                                    displayBar.textContent += ` | Formula: ${formula}`;
+                                }
                             }
+                            
+                            // Clear the formula bar
+                            formulaBar.value = '';
                         } else {
                             alert(`Error: ${result.status}`);
                         }
@@ -241,6 +286,66 @@
                         console.error('Error updating cell:', error);
                         alert('Failed to update cell');
                     }
+                }
+            });
+            
+            // Add keyboard navigation
+            document.addEventListener('keydown', function(e) {
+                if (!selectedCell) return;
+                
+                const currentRow = parseInt(selectedCell.dataset.row);
+                const currentCol = parseInt(selectedCell.dataset.col);
+                let newRow = currentRow;
+                let newCol = currentCol;
+                
+                // Only navigate if not focused on formula bar
+                if (document.activeElement !== formulaBar) {
+                    switch (e.key) {
+                        case 'ArrowUp':
+                            newRow = Math.max(1, currentRow - 1);
+                            break;
+                        case 'ArrowDown':
+                            newRow = Math.min(sheetData.rows, currentRow + 1);
+                            break;
+                        case 'ArrowLeft':
+                            newCol = Math.max(1, currentCol - 1);
+                            break;
+                        case 'ArrowRight':
+                            newCol = Math.min(sheetData.cols, currentCol + 1);
+                            break;
+                    }
+                    
+                    if (newRow !== currentRow || newCol !== currentCol) {
+                        const newCellName = columnToLetter(newCol) + newRow;
+                        const newCell = document.querySelector(`.cell[data-name="${newCellName}"]`);
+                        if (newCell) {
+                            selectCell(newCell);
+                            e.preventDefault(); // Prevent default scrolling
+                        }
+                    }
+                }
+            });
+            
+            // Handle save button click
+            saveButton.addEventListener('click', async function() {
+                try {
+                    const filename = prompt("Enter filename to save (will be saved with .bin.gz extension):", "spreadsheet");
+                    if (!filename) return;
+                    
+                    const response = await fetch(`/api/save?filename=${encodeURIComponent(filename)}.bin.gz`, {
+                        method: 'POST'
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.status === 'ok') {
+                        alert(`Spreadsheet saved successfully as ${filename}.bin.gz`);
+                    } else {
+                        alert(`Error saving spreadsheet: ${result.message}`);
+                    }
+                } catch (error) {
+                    console.error('Error saving spreadsheet:', error);
+                    alert('Failed to save spreadsheet');
                 }
             });
             

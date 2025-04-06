@@ -932,7 +932,7 @@ impl Spreadsheet {
         // Perform topological sort
         let sorted_cells = self.topo_sort(cell);
 
-        println!("Updating cells in topological order:");
+        // println!("Updating cells in topological order:");
         // for (row, col) in &sorted_cells {
         //     println!("Cell {}{}...", Self::col_to_letter(*col as i32), row);
         // }
