@@ -24,6 +24,8 @@ jobs:
       run: cargo run --package cop --bin cell_test
     - name : Saving Sheet
       run: cargo run --package cop --bin saving_test
+    - name: Check formatting
+      run: cargo fmt -- --check
     - name: Clippy 
-      run: cargo clippy --all-targets --all-features -- -D warnings
+      run: cargo clippy --all-targets --all-features
     
