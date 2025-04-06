@@ -68,7 +68,7 @@ pub async fn run(rows: i32, cols: i32) -> Result<(), Box<dyn std::error::Error>>
 }
 
 async fn serve_index() -> Html<&'static str> {
-    Html(include_str!("./static/index.html"))
+    Html(include_str!("./static/sheet.html"))
 }
 
 async fn get_sheet_data(State(state): State<Arc<AppState>>) -> impl IntoResponse {
@@ -163,3 +163,5 @@ async fn save_spreadsheet(
         .into_response(),
     }
 }
+
+
