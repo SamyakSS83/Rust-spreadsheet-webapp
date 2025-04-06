@@ -1,7 +1,7 @@
-use std::collections::BTreeSet; // Using BTreeSet as an AVL-tree-like ordered collection
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet; // Using BTreeSet as an AVL-tree-like ordered collection
 
-#[derive(Clone, Serialize, Deserialize,Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Cell {
     pub row: i32,
     pub col: i32,
@@ -12,7 +12,7 @@ pub struct Cell {
     pub dependents: Dependents,
 }
 
-#[derive(Clone, Serialize, Deserialize,Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum Dependents {
     Vector(Vec<String>),
     Set(BTreeSet<String>),
@@ -35,7 +35,7 @@ impl Cell {
     pub fn dep_insert(&mut self, key: &str) {
         // Set the initialised flag to 1 whenever a dependency is added
         self.dependents_initialised = 1;
-        
+
         match &mut self.dependents {
             Dependents::None => {
                 let mut v = Vec::new();
@@ -66,10 +66,10 @@ impl Cell {
         match &mut self.dependents {
             Dependents::Vector(vec) => {
                 vec.retain(|k| k != key);
-            },
+            }
             Dependents::Set(set) => {
                 set.remove(key);
-            },
+            }
             Dependents::None => {}
         }
     }
@@ -85,14 +85,12 @@ impl Cell {
             Dependents::None => false,
         }
     }
-    
 }
 
 // Public interface functions that match the C API
 pub fn cell_create(row: i32, col: i32) -> Box<Cell> {
     Box::new(Cell::create(row, col))
 }
-
 
 pub fn cell_dep_insert(cell: &mut Cell, key: &str) {
     cell.dep_insert(key);
