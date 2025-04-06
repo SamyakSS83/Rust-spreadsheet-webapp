@@ -318,7 +318,7 @@ fn test_spreadsheet_evaluate_function() {
     }
 
     // Create a temporary cell for testing function evaluation
-    let mut test_cell = cop::cell::cell_create(1, 1);
+    let mut _test_cell = cop::cell::cell_create(1, 1);
 
     // Test SUM function
     let result = sheet.spreadsheet_evaluate_function("SUM", "A1:B2", "SUM(A1:B2)");
