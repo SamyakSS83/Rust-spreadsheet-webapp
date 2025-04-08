@@ -2,6 +2,7 @@ mod app;
 mod cell;
 mod saving;
 mod spreadsheet;
+mod graph;  
 
 use std::env;
 
