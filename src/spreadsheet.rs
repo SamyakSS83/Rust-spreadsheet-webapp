@@ -1000,4 +1000,108 @@ impl Spreadsheet {
             println!();
         }
     }
+
+    pub fn is_valid_command(&self, cell_name: &str, formula: &str) -> bool {
+        if cell_name.is_empty() || formula.is_empty() {
+            return false;
+        }
+
+        // Check if valid cell name
+        if self.spreadsheet_parse_cell_name(cell_name).is_none() {
+            return false;
+        }
+
+        // Check if valid formula
+        if formula.is_empty() {
+            return false;
+        }
+
+        // Check for function call pattern: FUNC(...)
+        let func_regex = regex::Regex::new(r"^([A-Za-z]+)\((.*)\)$").unwrap();
+        if let Some(captures) = func_regex.captures(formula) {
+            let func = captures.get(1).unwrap().as_str();
+            let args = captures.get(2).unwrap().as_str();
+
+            if func.eq_ignore_ascii_case("SLEEP") {
+                if args.is_empty() {
+                    return false;
+                }
+                // Check if args is a valid integer
+                if args.parse::<i32>().is_ok() {
+                    return true;
+                }
+                // Check if args is a valid cell reference
+                if self.spreadsheet_parse_cell_name(args).is_some() {
+                    return true;
+                }
+                return false;
+            } else {
+                // Check for range functions like MIN, MAX, etc.
+                if let Some(colon_pos) = args.find(':') {
+                    let (start, end) = args.split_at(colon_pos);
+                    let end = &end[1..]; // Skip the colon
+
+                    if let (Some((start_row, start_col)), Some((end_row, end_col))) = (
+                        self.spreadsheet_parse_cell_name(start.trim()),
+                        self.spreadsheet_parse_cell_name(end.trim()),
+                    ) {
+                        if start_row <= end_row && start_col <= end_col {
+                            return matches!(
+                                func.to_uppercase().as_str(),
+                                "MIN" | "MAX" | "SUM" | "AVG" | "STDEV"
+                            );
+                        }
+                    }
+                }
+                return false;
+            }
+        }
+
+        // Check if the formula is a cell reference (e.g., A1)
+        let cell_regex = regex::Regex::new(r"^[A-Za-z]+[0-9]+$").unwrap();
+        if cell_regex.is_match(formula) {
+            return self.spreadsheet_parse_cell_name(formula).is_some();
+        }
+
+        // Check for arithmetic expressions
+        let mut chars = formula.chars().peekable();
+        let mut parse_operand = || {
+            if let Some(&c) = chars.peek() {
+                if c == '+' || c == '-' {
+                    chars.next();
+                }
+            }
+            if chars.peek().map_or(false, |c| c.is_ascii_digit()) {
+                while chars.peek().map_or(false, |c| c.is_ascii_digit()) {
+                    chars.next();
+                }
+                return true;
+            } else if chars.peek().map_or(false, |c| c.is_ascii_alphabetic()) {
+                while chars.peek().map_or(false, |c| c.is_ascii_alphabetic()) {
+                    chars.next();
+                }
+                while chars.peek().map_or(false, |c| c.is_ascii_digit()) {
+                    chars.next();
+                }
+                return true;
+            }
+            false
+        };
+
+        if !parse_operand() {
+            return false;
+        }
+
+        if let Some(&op) = chars.peek() {
+            if "+-*/".contains(op) {
+                chars.next();
+            } else {
+                return true;
+            }
+        } else {
+            return true;
+        }
+
+        parse_operand() && chars.next().is_none()
+    }
 }
