@@ -218,6 +218,7 @@
     <div id="graph-modal" class="modal hidden">
         <div class="modal-content">
             <h2>Create Graph</h2>
+            <label>Graph Title: <input type="text" id="graph-title" placeholder="e.g., Sales Data"></label><br>
             <label>X Range: <input type="text" id="x-range" placeholder="e.g., 0-10"></label><br>
             <label>Y Range: <input type="text" id="y-range" placeholder="e.g., 0-100"></label><br>
             <label>Graph Type:
@@ -254,16 +255,58 @@
                 modal.classList.add("hidden");
             });
 
-            document.getElementById("create-graph").addEventListener("click", () => {
+            document.getElementById("create-graph").addEventListener("click", async function() {
+                const graphtitle = document.getElementById("graph-title").value;
                 const xRange = document.getElementById("x-range").value;
                 const yRange = document.getElementById("y-range").value;
                 const type = document.getElementById("graph-type").value;
                 const xLabel = document.getElementById("x-label").value;
                 const yLabel = document.getElementById("y-label").value;
 
-                // TODO: Use the input values to create the graph
-                console.log({ xRange, yRange, type, xLabel, yLabel });
 
+                const payload = {
+                    x_range: xRange,
+                    y_range: yRange,
+                    title: graphtitle,
+                    x_label: xLabel,
+                    y_label: yLabel,
+                    graph_type: type,
+                };
+
+                try {
+                    const response = await fetch("http://localhost:PORT/generate-graph", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify(payload),
+                    });
+
+                    if (!response.ok) {
+                        throw new Error("Graph generation failed");
+                    }
+
+                    // Display the graph (assuming it returns an image/png)
+                    const blob = await response.blob();
+                    const imageUrl = URL.createObjectURL(blob);
+                    const img = document.createElement("img");
+                    img.src = imageUrl;
+
+                    const modal = document.getElementById("graph-modal");
+                    modal.innerHTML += img.outerHTML;
+
+                } catch (error) {
+                    alert("Error: " + error.message);
+                }
+                // TODO: Use the input values to create the graph
+                // graph.rs has function of create_graph 
+                console.log({ graphtitle, xRange, yRange, type, xLabel, yLabel });
+
+                modal.classList.add("hidden");
+            });
+
+            document.getElementById("close-modal").addEventListener("click", function () {
+                const modal = document.getElementById("graph-modal");
                 modal.classList.add("hidden");
             });
 
