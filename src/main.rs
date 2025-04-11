@@ -1,27 +1,92 @@
-mod app;
-mod cell;
-mod saving;
-mod spreadsheet;
-mod graph;  
+use crate::spreadsheet::{Spreadsheet, Spreadsheet as SpreadsheetTrait};
+use std::io::{self, Write};
+use std::time::{Duration, Instant};
 
-use std::env;
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args: Vec<String> = env::args().collect();
-
-    // Default values for rows and columns
-    let mut rows = 10;
-    let mut cols = 10;
-
-    // Parse command-line arguments
-    if args.len() >= 3 {
-        rows = args[1].parse().unwrap_or(10);
-        cols = args[2].parse().unwrap_or(10);
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() != 3 {
+        eprintln!("Usage: {} <rows> <cols>", args[0]);
+        return;
     }
 
-    // Start the web application
-    app::run(rows, cols).await?;
+    let rows: i32 = args[1].parse().unwrap_or(0);
+    let cols: i32 = args[2].parse().unwrap_or(0);
 
-    Ok(())
+    if rows < 1 || rows > 999 || cols < 1 || cols > 18278 {
+        eprintln!("Error: Invalid dimensions");
+        return;
+    }
+
+    let start_time = Instant::now();
+    let mut sheet = Spreadsheet::spreadsheet_create(rows, cols).unwrap();
+    let mut elapsed_time;
+    let mut status = String::from("ok");
+    let mut show = true;
+
+    loop {
+        if show {
+            sheet.spreadsheet_display();
+        }
+
+        elapsed_time = start_time.elapsed().as_secs_f64();
+        print!("[{:.1}] ({}) > ", elapsed_time, status);
+        io::stdout().flush().unwrap();
+
+        let mut command = String::new();
+        if io::stdin().read_line(&mut command).is_err() {
+            break;
+        }
+        let command = command.trim();
+
+        if command.is_empty() {
+            status = String::from("invalid command");
+            continue;
+        }
+
+        if command == "q" {
+            break;
+        } else if command.len() == 1 && "wasd".contains(command) {
+            match command {
+                "w" if sheet.view_row > 0 => {
+                    sheet.view_row = (sheet.view_row - 10).max(0);
+                }
+                "s" if sheet.view_row < sheet.rows - 19 => {
+                    sheet.view_row = (sheet.view_row + 10).min(sheet.rows - 10);
+                }
+                "a" if sheet.view_col > 0 => {
+                    sheet.view_col = (sheet.view_col - 10).max(0);
+                }
+                "d" if sheet.view_col < sheet.cols - 19 => {
+                    sheet.view_col = (sheet.view_col + 10).min(sheet.cols - 10);
+                }
+                _ => {}
+            }
+            status = String::from("ok");
+        } else if command == "disable_output" {
+            show = false;
+            status = String::from("ok");
+        } else if command == "enable_output" {
+            show = true;
+            status = String::from("ok");
+        } else if command.starts_with("scroll_to") {
+            let cell_name = command[10..].trim();
+            if let Some((row, col)) = sheet.spreadsheet_parse_cell_name(cell_name) {
+                sheet.view_row = row - 1;
+                sheet.view_col = col - 1;
+                status = String::from("ok");
+            } else {
+                status = String::from("invalid cell");
+            }
+        } else if let Some(equal_pos) = command.find('=') {
+            let cell_name = &command[..equal_pos];
+            let formula = &command[equal_pos + 1..];
+            if !sheet.is_valid_command(cell_name, formula) {
+                status = String::from("invalid command");
+            } else {
+                sheet.spreadsheet_set_cell_value(cell_name, formula, &mut status);
+            }
+        } else {
+            status = String::from("invalid command");
+        }
+    }
 }
