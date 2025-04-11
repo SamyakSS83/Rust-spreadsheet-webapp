@@ -215,6 +215,14 @@
             <div id="grid"></div>
         </div>
     </div>
+    <div id="graph-display-modal" class="modal hidden">
+        <div class="modal-content">
+            <span id="close-graph-modal" style="float:right; cursor:pointer;">&times;</span>
+            <h2>Graph Preview</h2>
+            <img id="graph-preview" src="" alt="Generated Graph" style="max-width: 100%; margin-top: 10px;">
+        </div>
+    </div>
+
     <div id="graph-modal" class="modal hidden">
         <div class="modal-content">
             <h2>Create Graph</h2>
@@ -223,10 +231,10 @@
             <label>Y Range: <input type="text" id="y-range" placeholder="e.g., 0-100"></label><br>
             <label>Graph Type:
                 <select id="graph-type">
-                    <option value="line">Line</option>
-                    <option value="bar">Bar</option>
-                    <option value="scatter">Scatter</option>
-                    <option value="area">Area</option>
+                    <option value="Line">Line</option>
+                    <option value="Bar">Bar</option>
+                    <option value="Scatter">Scatter</option>
+                    <option value="Area">Area</option>
                 </select>
             </label><br>
             <label>X Label: <input type="text" id="x-label" placeholder="e.g., Time (s)"></label><br>
@@ -255,7 +263,7 @@
                 modal.classList.add("hidden");
             });
 
-            document.getElementById("create-graph").addEventListener("click", async function() {
+            document.getElementById("create-graph").addEventListener("click", async function () {
                 const graphtitle = document.getElementById("graph-title").value;
                 const xRange = document.getElementById("x-range").value;
                 const yRange = document.getElementById("y-range").value;
@@ -274,7 +282,7 @@
                 };
 
                 try {
-                    const response = await fetch("http://localhost:PORT/generate-graph", {
+                    const response = await fetch('/api/graph', {
                         method: "POST",
                         headers: {
                             "Content-Type": "application/json",
@@ -287,13 +295,18 @@
                     }
 
                     // Display the graph (assuming it returns an image/png)
-                    const blob = await response.blob();
-                    const imageUrl = URL.createObjectURL(blob);
-                    const img = document.createElement("img");
-                    img.src = imageUrl;
+                    // const blob = await response.blob();
+                    // const imageUrl = URL.createObjectURL(blob);
+                    // const img = document.createElement("img");
+                    // img.src = imageUrl;
 
-                    const modal = document.getElementById("graph-modal");
-                    modal.innerHTML += img.outerHTML;
+                    // const modal = document.getElementById("graph-modal");
+                    // modal.innerHTML += img.outerHTML;
+
+                    const blob = await response.blob();
+                    const imgUrl = URL.createObjectURL(blob);
+                    document.getElementById("graph-preview").src = imgUrl;
+                    document.getElementById("graph-display-modal").classList.remove("hidden");
 
                 } catch (error) {
                     alert("Error: " + error.message);
@@ -303,6 +316,9 @@
                 console.log({ graphtitle, xRange, yRange, type, xLabel, yLabel });
 
                 modal.classList.add("hidden");
+            });
+            document.getElementById("close-graph-modal").addEventListener("click", () => {
+                document.getElementById("graph-display-modal").classList.add("hidden");
             });
 
             document.getElementById("close-modal").addEventListener("click", function () {

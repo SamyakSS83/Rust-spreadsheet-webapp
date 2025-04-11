@@ -15,6 +15,8 @@ plotters = "0.3"
 # Web framework and related
 axum = { version = "0.7", features = ["json", "multipart"] }
 tower-http = { version = "0.5", features = ["fs", "cors", "trace"] }
+image = "0.24" 
+tempfile = "3.6.0" 
 
 # Keep existing dependencies for compatibility
 actix-web = "4.3"

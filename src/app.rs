@@ -59,6 +59,40 @@ struct GraphRequest {
     graph_type: String,
 }
 
+
+
+
+pub async fn run(rows: i32, cols: i32) -> Result<(), Box<dyn std::error::Error>> {
+    // Create spreadsheet
+    let sheet = Spreadsheet::spreadsheet_create(rows, cols).expect("Failed to create spreadsheet");
+
+    // Setup app state
+    let app_state = Arc::new(AppState {
+        sheet: Mutex::new(sheet),
+    });
+
+    // Build router
+    let app = Router::new()
+        .route("/", get(serve_landing))
+        .route("/sheet", get(serve_sheet))
+        .route("/api/sheet", get(get_sheet_data))
+        .route("/api/cell/:cell_name", get(get_cell))
+        .route("/api/update_cell", post(update_cell))
+        .route("/api/save", post(save_spreadsheet))
+        .route("/api/export", post(export_spreadsheet))
+        .route("/api/load", post(load_spreadsheet))
+        .route("/api/graph", post(generate_graph))
+        .nest_service("/static", ServeDir::new("static"))
+        .with_state(app_state);
+
+    // Start server
+    let listener = TcpListener::bind("127.0.0.1:3000").await?;
+    println!("Listening on http://127.0.0.1:3000");
+    axum::serve(listener, app).await?;
+
+    Ok(())
+}
+
 async fn generate_graph(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<GraphRequest>,
@@ -84,6 +118,8 @@ async fn generate_graph(
 
     match create_graph(&sheet, &payload.x_range, &payload.y_range, options) {
         Ok(img_data) => (
+            // printing of the Vec<u8> for debugging purpose :
+            // println!("{:?}", img_data),
             [("Content-Type", "image/png")],
             img_data,
         ).into_response(),
@@ -92,37 +128,6 @@ async fn generate_graph(
             format!("Failed to create graph: {}", e),
         ).into_response(),
     }
-}
-
-
-pub async fn run(rows: i32, cols: i32) -> Result<(), Box<dyn std::error::Error>> {
-    // Create spreadsheet
-    let sheet = Spreadsheet::spreadsheet_create(rows, cols).expect("Failed to create spreadsheet");
-
-    // Setup app state
-    let app_state = Arc::new(AppState {
-        sheet: Mutex::new(sheet),
-    });
-
-    // Build router
-    let app = Router::new()
-        .route("/", get(serve_landing))
-        .route("/sheet", get(serve_sheet))
-        .route("/api/sheet", get(get_sheet_data))
-        .route("/api/cell/:cell_name", get(get_cell))
-        .route("/api/update_cell", post(update_cell))
-        .route("/api/save", post(save_spreadsheet))
-        .route("/api/export", post(export_spreadsheet))
-        .route("/api/load", post(load_spreadsheet))
-        .nest_service("/static", ServeDir::new("static"))
-        .with_state(app_state);
-
-    // Start server
-    let listener = TcpListener::bind("127.0.0.1:3000").await?;
-    println!("Listening on http://127.0.0.1:3000");
-    axum::serve(listener, app).await?;
-
-    Ok(())
 }
 
 async fn serve_landing() -> Html<&'static str> {
