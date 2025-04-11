@@ -961,4 +961,43 @@ impl Spreadsheet {
 
         *status_out = "ok".to_string();
     }
+
+    pub fn spreadsheet_display(&self) {
+        let end_row = if self.view_row + 10 < self.rows {
+            self.view_row + 10
+        } else {
+            self.rows
+        };
+
+        let end_col = if self.view_col + 10 < self.cols {
+            self.view_col + 10
+        } else {
+            self.cols
+        };
+
+        // Print column headers
+        print!("\t\t");
+        for col in (self.view_col + 1)..=end_col {
+            print!("{}\t\t", Self::col_to_letter(col));
+        }
+        println!();
+
+        // Print rows
+        for row in (self.view_row + 1)..=end_row {
+            print!("{}\t\t", row);
+            for col in (self.view_col + 1)..=end_col {
+                let index = ((row - 1) * self.cols + (col - 1)) as usize;
+                if let Some(cell) = self.cells.get(index).and_then(|opt| opt.as_ref()) {
+                    if cell.error {
+                        print!("ERR\t\t");
+                    } else {
+                        print!("{:<16}", cell.value);
+                    }
+                } else {
+                    print!("0\t\t");
+                }
+            }
+            println!();
+        }
+    }
 }
