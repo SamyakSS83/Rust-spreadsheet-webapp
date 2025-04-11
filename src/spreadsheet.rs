@@ -1065,7 +1065,8 @@ impl Spreadsheet {
 
         // Check for arithmetic expressions
         let mut chars = formula.chars();
-        let mut parse_operand = || {
+
+        fn parse_operand(chars: &mut std::str::Chars) -> bool {
             if let Some(c) = chars.next() {
                 if c == '+' || c == '-' {
                     // Skip the sign
@@ -1080,16 +1081,16 @@ impl Spreadsheet {
                 }
             }
             false
-        };
+        }
 
-        if !parse_operand() {
+        if !parse_operand(&mut chars) {
             return false;
         }
 
         if let Some(op) = chars.next() {
             if "+-*/".contains(op) {
                 // Continue parsing the second operand
-                if !parse_operand() {
+                if !parse_operand(&mut chars) {
                     return false;
                 }
             } else {
