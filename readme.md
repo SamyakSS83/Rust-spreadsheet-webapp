@@ -9,3 +9,11 @@ how to run:
 cargo build
 ./target/debug/cop
 ```
+
+To Do:
+
+write main for autograder
+write is_valid_command
+write spreadsheet_display
+reduce memory
+reduce time
