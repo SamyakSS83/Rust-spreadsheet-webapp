@@ -14,6 +14,8 @@ use tower_http::services::ServeDir;
 use crate::saving;
 use crate::spreadsheet::Spreadsheet;
 
+use crate::graph::{GraphOptions, GraphType, create_graph};
+
 pub struct AppState {
     sheet: Mutex<Box<Spreadsheet>>,
 }
@@ -46,6 +48,52 @@ struct SaveResponse {
     status: String,
     message: Option<String>,
 }
+
+#[derive(Deserialize)]
+struct GraphRequest {
+    x_range: String,
+    y_range: String,
+    title: String,
+    x_label: String,
+    y_label: String,
+    graph_type: String,
+}
+
+async fn generate_graph(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<GraphRequest>,
+) -> impl IntoResponse {
+    let sheet = state.sheet.lock().unwrap();
+
+    let graph_type = match payload.graph_type.as_str() {
+        "Line" => GraphType::Line,
+        "Bar" => GraphType::Bar,
+        "Scatter" => GraphType::Scatter,
+        "Area" => GraphType::Area,
+        _ => GraphType::Line,
+    };
+
+    let options = GraphOptions {
+        title: payload.title,
+        x_label: payload.x_label,
+        y_label: payload.y_label,
+        width: 800,
+        height: 600,
+        graph_type,
+    };
+
+    match create_graph(&sheet, &payload.x_range, &payload.y_range, options) {
+        Ok(img_data) => (
+            [("Content-Type", "image/png")],
+            img_data,
+        ).into_response(),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            format!("Failed to create graph: {}", e),
+        ).into_response(),
+    }
+}
+
 
 pub async fn run(rows: i32, cols: i32) -> Result<(), Box<dyn std::error::Error>> {
     // Create spreadsheet

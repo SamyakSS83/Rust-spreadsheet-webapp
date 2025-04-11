@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,13 +11,13 @@
             margin: 0;
             padding: 0;
         }
-        
+
         #app {
             display: flex;
             flex-direction: column;
             height: 100vh;
         }
-        
+
         #toolbar {
             display: flex;
             padding: 10px;
@@ -24,14 +25,14 @@
             border-bottom: 1px solid #ddd;
             align-items: center;
         }
-        
+
         #formula-bar {
             flex: 1;
             margin-left: 10px;
             padding: 5px;
             font-family: monospace;
         }
-        
+
         #selected-cell {
             width: 100px;
             padding: 5px;
@@ -39,7 +40,7 @@
             border: 1px solid #ddd;
             text-align: center;
         }
-        
+
         #display-bar {
             width: 200px;
             padding: 5px;
@@ -50,19 +51,19 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
-        
+
         #grid-container {
             flex: 1;
             overflow: auto;
             position: relative;
         }
-        
+
         #grid {
             display: grid;
             grid-template-columns: 50px repeat(var(--cols, 10), 100px);
             grid-template-rows: 30px repeat(var(--rows, 10), 25px);
         }
-        
+
         .cell {
             border: 1px solid #ddd;
             padding: 4px;
@@ -70,7 +71,7 @@
             white-space: nowrap;
             background-color: white;
         }
-        
+
         .header-cell {
             background-color: #f0f0f0;
             font-weight: bold;
@@ -78,36 +79,36 @@
             position: sticky;
             z-index: 10;
         }
-        
+
         .row-header {
             left: 0;
             z-index: 20;
         }
-        
+
         .col-header {
             top: 0;
         }
-        
+
         .corner-header {
             top: 0;
             left: 0;
             z-index: 30;
         }
-        
+
         .selected {
             background-color: #e6f3ff;
             border: 1px solid #4d90fe;
         }
-        
+
         .error {
             background-color: #ffebee;
         }
-        
+
         #actions {
             display: flex;
             gap: 10px;
         }
-        
+
         .action-button {
             padding: 5px 10px;
             border: none;
@@ -115,26 +116,52 @@
             cursor: pointer;
             font-weight: bold;
         }
-        
+
         #save-button {
             background-color: #4CAF50;
             color: white;
         }
-        
+
         #save-button:hover {
             background-color: #45a049;
         }
-        
+
         #home-button {
             background-color: #2196F3;
             color: white;
         }
-        
+
         #home-button:hover {
             background-color: #0b7dda;
         }
+
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            width: 300px;
+            text-align: left;
+        }
+
+        .hidden {
+            display: none;
+        }
     </style>
 </head>
+
 <body>
     <div id="app">
         <div id="toolbar">
@@ -142,6 +169,7 @@
             <div id="display-bar"></div>
             <input type="text" id="formula-bar" placeholder="Enter formula here...">
             <div id="actions">
+                <button id="graph-button">Graph</button>
                 <button id="save-button" class="action-button">Save</button>
                 <button id="home-button" class="action-button">Home</button>
             </div>
@@ -150,19 +178,60 @@
             <div id="grid"></div>
         </div>
     </div>
-
+    <div id="graph-modal" class="modal hidden">
+        <div class="modal-content">
+            <h2>Create Graph</h2>
+            <label>X Range: <input type="text" id="x-range" placeholder="e.g., 0-10"></label><br>
+            <label>Y Range: <input type="text" id="y-range" placeholder="e.g., 0-100"></label><br>
+            <label>Graph Type:
+                <select id="graph-type">
+                    <option value="line">Line</option>
+                    <option value="bar">Bar</option>
+                    <option value="scatter">Scatter</option>
+                </select>
+            </label><br>
+            <label>X Label: <input type="text" id="x-label" placeholder="e.g., Time (s)"></label><br>
+            <label>Y Label: <input type="text" id="y-label" placeholder="e.g., Value"></label><br>
+            <button id="create-graph">Create</button>
+            <button id="close-modal">Cancel</button>
+        </div>
+    </div>
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             const grid = document.getElementById('grid');
             const formulaBar = document.getElementById('formula-bar');
             const selectedCellDisplay = document.getElementById('selected-cell');
             const displayBar = document.getElementById('display-bar');
             const saveButton = document.getElementById('save-button');
             const homeButton = document.getElementById('home-button');
-            
+            const graphButton = document.getElementById("graph-button");
+            const modal = document.getElementById("graph-modal");
+            const closeModal = document.getElementById("close-modal");
+
+            graphButton.addEventListener("click", () => {
+                modal.classList.remove("hidden");
+            });
+
+            closeModal.addEventListener("click", () => {
+                modal.classList.add("hidden");
+            });
+
+            document.getElementById("create-graph").addEventListener("click", () => {
+                const xRange = document.getElementById("x-range").value;
+                const yRange = document.getElementById("y-range").value;
+                const type = document.getElementById("graph-type").value;
+                const xLabel = document.getElementById("x-label").value;
+                const yLabel = document.getElementById("y-label").value;
+
+                // TODO: Use the input values to create the graph
+                console.log({ xRange, yRange, type, xLabel, yLabel });
+
+                modal.classList.add("hidden");
+            });
+
             let selectedCell = null;
             let sheetData = null;
-            
+
             // Fetch sheet data
             async function fetchSheetData() {
                 const response = await fetch('/api/sheet');
@@ -170,18 +239,18 @@
                 renderGrid(sheetData.rows, sheetData.cols);
                 updateCellValues(sheetData.cells);
             }
-            
+
             // Render the grid
             function renderGrid(rows, cols) {
                 grid.style.setProperty('--rows', rows);
                 grid.style.setProperty('--cols', cols);
                 grid.innerHTML = '';
-                
+
                 // Add corner cell (empty)
                 const cornerCell = document.createElement('div');
                 cornerCell.className = 'cell header-cell corner-header';
                 grid.appendChild(cornerCell);
-                
+
                 // Add column headers (A, B, C...)
                 for (let c = 1; c <= cols; c++) {
                     const colHeader = document.createElement('div');
@@ -189,7 +258,7 @@
                     colHeader.textContent = columnToLetter(c);
                     grid.appendChild(colHeader);
                 }
-                
+
                 // Add rows with headers
                 for (let r = 1; r <= rows; r++) {
                     // Row header (1, 2, 3...)
@@ -197,7 +266,7 @@
                     rowHeader.className = 'cell header-cell row-header';
                     rowHeader.textContent = r;
                     grid.appendChild(rowHeader);
-                    
+
                     // Regular cells
                     for (let c = 1; c <= cols; c++) {
                         const cell = document.createElement('div');
@@ -210,7 +279,7 @@
                     }
                 }
             }
-            
+
             // Convert column number to letter (1=A, 2=B, etc.)
             function columnToLetter(col) {
                 let letter = '';
@@ -221,12 +290,12 @@
                 }
                 return letter;
             }
-            
+
             // Update cell values from data
             function updateCellValues(cells) {
                 cells.forEach(cellData => {
                     if (!cellData.name) return;
-                    
+
                     const selector = `.cell[data-name="${cellData.name}"]`;
                     const cellElement = document.querySelector(selector);
                     if (cellElement) {
@@ -240,36 +309,36 @@
                     }
                 });
             }
-            
+
             // Select a cell
             function selectCell(cell) {
                 // Deselect previously selected cell
                 if (selectedCell) {
                     selectedCell.classList.remove('selected');
                 }
-                
+
                 // Select new cell
                 cell.classList.add('selected');
                 selectedCell = cell;
                 selectedCellDisplay.textContent = cell.dataset.name;
-                
+
                 // Update display bar with cell value and formula
                 displayBar.textContent = `Value: ${cell.textContent || '0'}`;
                 if (cell.dataset.formula) {
                     displayBar.textContent += ` | Formula: ${cell.dataset.formula}`;
                 }
-                
+
                 // Update formula bar
                 formulaBar.value = cell.dataset.formula || '';
                 formulaBar.focus();
             }
-            
+
             // Handle formula submission
-            formulaBar.addEventListener('keydown', async function(e) {
+            formulaBar.addEventListener('keydown', async function (e) {
                 if (e.key === 'Enter' && selectedCell) {
                     const cellName = selectedCell.dataset.name;
                     const formula = formulaBar.value.trim();
-                    
+
                     try {
                         const response = await fetch('/api/update_cell', {
                             method: 'POST',
@@ -281,13 +350,13 @@
                                 formula: formula
                             })
                         });
-                        
+
                         const result = await response.json();
-                        
+
                         if (result.status === 'ok') {
                             // Refresh the sheet to show all updates
                             fetchSheetData();
-                            
+
                             // Update the display bar
                             if (result.value !== undefined) {
                                 displayBar.textContent = `Value: ${result.value}`;
@@ -295,7 +364,7 @@
                                     displayBar.textContent += ` | Formula: ${formula}`;
                                 }
                             }
-                            
+
                             // Clear the formula bar
                             formulaBar.value = '';
                         } else {
@@ -307,44 +376,44 @@
                     }
                 }
             });
-            
+
             // Handle save button click
-            saveButton.addEventListener('click', async function() {
+            saveButton.addEventListener('click', async function () {
                 try {
                     // Check if File System Access API is supported
                     if ('showSaveFilePicker' in window) {
                         displayBar.textContent = "Preparing to save...";
-                        
+
                         // Set up file save options
                         const opts = {
                             suggestedName: 'spreadsheet.bin.gz',
                             types: [{
                                 description: 'Compressed Spreadsheet File',
-                                accept: {'application/gzip': ['.bin.gz']}
+                                accept: { 'application/gzip': ['.bin.gz'] }
                             }]
                         };
-                        
+
                         try {
                             // Show save file picker
                             const fileHandle = await window.showSaveFilePicker(opts);
-                            
+
                             // Request file export from server
                             const response = await fetch('/api/export', {
                                 method: 'POST'
                             });
-                            
+
                             if (!response.ok) {
                                 throw new Error('Failed to export spreadsheet');
                             }
-                            
+
                             // Get the file blob
                             const blob = await response.blob();
-                            
+
                             // Write to the selected file
                             const writable = await fileHandle.createWritable();
                             await writable.write(blob);
                             await writable.close();
-                            
+
                             displayBar.textContent = "Spreadsheet saved successfully!";
                         } catch (pickErr) {
                             // User may have cancelled
@@ -358,17 +427,17 @@
                         // Fallback for browsers without File System Access API
                         const filename = prompt("Enter filename to save (will be saved with .bin.gz extension):", "spreadsheet");
                         if (!filename) return;
-                        
+
                         displayBar.textContent = "Preparing download...";
-                        
+
                         const response = await fetch('/api/export', {
                             method: 'POST'
                         });
-                        
+
                         if (!response.ok) {
                             throw new Error('Failed to export spreadsheet');
                         }
-                        
+
                         // Get blob and trigger download
                         const blob = await response.blob();
                         const url = URL.createObjectURL(blob);
@@ -379,7 +448,7 @@
                         a.click();
                         document.body.removeChild(a);
                         URL.revokeObjectURL(url);
-                        
+
                         displayBar.textContent = `Spreadsheet downloaded as ${filename}.bin.gz`;
                     }
                 } catch (error) {
@@ -387,16 +456,16 @@
                     displayBar.textContent = `Error: ${error.message}`;
                 }
             });
-            
+
             // Add keyboard navigation
-            document.addEventListener('keydown', function(e) {
+            document.addEventListener('keydown', function (e) {
                 if (!selectedCell) return;
-                
+
                 const currentRow = parseInt(selectedCell.dataset.row);
                 const currentCol = parseInt(selectedCell.dataset.col);
                 let newRow = currentRow;
                 let newCol = currentCol;
-                
+
                 // Only navigate if not focused on formula bar
                 if (document.activeElement !== formulaBar) {
                     switch (e.key) {
@@ -413,7 +482,7 @@
                             newCol = Math.min(sheetData.cols, currentCol + 1);
                             break;
                     }
-                    
+
                     if (newRow !== currentRow || newCol !== currentCol) {
                         const newCellSelector = `.cell[data-row="${newRow}"][data-col="${newCol}"]`;
                         const newCell = document.querySelector(newCellSelector);
@@ -424,15 +493,16 @@
                     }
                 }
             });
-            
+
             // Home button click handler
-            homeButton.addEventListener('click', function() {
+            homeButton.addEventListener('click', function () {
                 window.location.href = '/';
             });
-            
+
             // Initialize the grid
             fetchSheetData();
         });
     </script>
 </body>
+
 </html>
