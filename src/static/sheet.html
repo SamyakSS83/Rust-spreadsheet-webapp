@@ -24,6 +24,7 @@
             background-color: #f5f5f5;
             border-bottom: 1px solid #ddd;
             align-items: center;
+            gap: 10px;
         }
 
         #formula-bar {
@@ -145,19 +146,55 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            z-index: 1000;
+        }
+
+        .modal.hidden {
+            display: none;
         }
 
         .modal-content {
             background-color: white;
-            padding: 20px;
+            padding: 20px 30px;
             border-radius: 8px;
             width: 300px;
-            text-align: left;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
         }
 
-        .hidden {
-            display: none;
+        .modal-content h2 {
+            margin-top: 0;
+            margin-bottom: 20px;
+            font-size: 20px;
+        }
+
+        .modal-content label {
+            display: block;
+            margin-bottom: 12px;
+            font-size: 14px;
+        }
+
+        .modal-content input,
+        .modal-content select {
+            width: 100%;
+            padding: 6px 8px;
+            margin-top: 4px;
+            box-sizing: border-box;
+            font-size: 14px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        .modal-content button {
+            margin-top: 10px;
+            margin-right: 10px;
+        }
+
+        #graph-button {
+            background-color: #bf63c4;
+            /* a green tone */
+        }
+
+        #graph-button:hover {
+            background-color: #de91d4;
         }
     </style>
 </head>
@@ -169,7 +206,7 @@
             <div id="display-bar"></div>
             <input type="text" id="formula-bar" placeholder="Enter formula here...">
             <div id="actions">
-                <button id="graph-button">Graph</button>
+                <button id="graph-button" class="action-button">Graph</button>
                 <button id="save-button" class="action-button">Save</button>
                 <button id="home-button" class="action-button">Home</button>
             </div>
@@ -188,6 +225,7 @@
                     <option value="line">Line</option>
                     <option value="bar">Bar</option>
                     <option value="scatter">Scatter</option>
+                    <option value="area">Area</option>
                 </select>
             </label><br>
             <label>X Label: <input type="text" id="x-label" placeholder="e.g., Time (s)"></label><br>
