@@ -1064,26 +1064,20 @@ impl Spreadsheet {
         }
 
         // Check for arithmetic expressions
-        let mut chars = formula.chars().peekable();
+        let mut chars = formula.chars();
         let mut parse_operand = || {
-            if let Some(&c) = chars.peek() {
+            if let Some(c) = chars.next() {
                 if c == '+' || c == '-' {
-                    chars.next();
+                    // Skip the sign
+                } else if c.is_ascii_digit() || c.is_ascii_alphabetic() {
+                    // Continue parsing the operand
+                    while let Some(c) = chars.next() {
+                        if !c.is_ascii_digit() && !c.is_ascii_alphabetic() {
+                            break;
+                        }
+                    }
+                    return true;
                 }
-            }
-            if chars.peek().map_or(false, |c| c.is_ascii_digit()) {
-                while chars.peek().map_or(false, |c| c.is_ascii_digit()) {
-                    chars.next();
-                }
-                return true;
-            } else if chars.peek().map_or(false, |c| c.is_ascii_alphabetic()) {
-                while chars.peek().map_or(false, |c| c.is_ascii_alphabetic()) {
-                    chars.next();
-                }
-                while chars.peek().map_or(false, |c| c.is_ascii_digit()) {
-                    chars.next();
-                }
-                return true;
             }
             false
         };
@@ -1092,16 +1086,17 @@ impl Spreadsheet {
             return false;
         }
 
-        if let Some(&op) = chars.peek() {
+        if let Some(op) = chars.next() {
             if "+-*/".contains(op) {
-                chars.next();
+                // Continue parsing the second operand
+                if !parse_operand() {
+                    return false;
+                }
             } else {
-                return true;
+                return false;
             }
-        } else {
-            return true;
         }
 
-        parse_operand() && chars.next().is_none()
+        chars.next().is_none()
     }
 }
