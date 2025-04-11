@@ -60,8 +60,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             let command = command.trim();
 
+            start_time = Instant::now(); // Reset the start time for the next command
+
             if command.is_empty() {
                 status = String::from("invalid command");
+                continue;
+            }
+
+            if command == "help" {
+                println!("Commands:");
+                println!("  q: Quit");
+                println!("  w: Move up");
+                println!("  s: Move down");
+                println!("  a: Move left");
+                println!("  d: Move right");
+                println!("  disable_output: Disable output display");
+                println!("  enable_output: Enable output display");
+                println!("  scroll_to <cell>: Scroll to the specified cell");
+                println!("  <cell>=<formula>: Set the formula for the specified cell");
                 continue;
             }
 
@@ -112,7 +128,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             // Update the start_time after processing the command
-            start_time = Instant::now();
+            // start_time = Instant::now();
         }
     }
 
