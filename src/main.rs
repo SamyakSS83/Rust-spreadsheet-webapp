@@ -1,10 +1,8 @@
 mod cell;
 mod spreadsheet;
 use crate::spreadsheet::{Spreadsheet, Spreadsheet as SpreadsheetTrait};
-// mod spreadsheet;
-// use spreadsheet::{Spreadsheet, Spreadsheet as SpreadsheetTrait};
 use std::io::{self, Write};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -21,7 +19,7 @@ fn main() {
         return;
     }
 
-    let start_time = Instant::now();
+    let mut start_time = Instant::now(); // Start time for the first command
     let mut sheet = Spreadsheet::spreadsheet_create(rows, cols).unwrap();
     let mut elapsed_time;
     let mut status = String::from("ok");
@@ -32,7 +30,7 @@ fn main() {
             sheet.spreadsheet_display();
         }
 
-        elapsed_time = start_time.elapsed().as_secs_f64();
+        elapsed_time = start_time.elapsed().as_secs_f64(); // Calculate time since the last command
         print!("[{:.1}] ({}) > ", elapsed_time, status);
         io::stdout().flush().unwrap();
 
@@ -92,5 +90,8 @@ fn main() {
         } else {
             status = String::from("invalid command");
         }
+
+        // Update the start_time after processing the command
+        start_time = Instant::now();
     }
 }
