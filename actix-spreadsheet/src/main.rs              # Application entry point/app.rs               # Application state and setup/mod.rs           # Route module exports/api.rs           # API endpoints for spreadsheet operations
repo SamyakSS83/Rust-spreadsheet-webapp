@@ -12,7 +12,6 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(app_state.clone()))
-            .route("/api/graph", web::post().to(generate_graph))
             .configure(routes::init_routes)
             .service(fs::Files::new("/static", "./static").show_files_listing())
     })

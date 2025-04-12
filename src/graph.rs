@@ -1,8 +1,5 @@
 use crate::spreadsheet::Spreadsheet;
-use image::{codecs::png, ImageBuffer, Rgba};
 use plotters::prelude::*;
-use std::io::Cursor;
-// use std::io::Read;
 
 #[derive(Clone)]
 #[derive(Debug)]
@@ -179,12 +176,12 @@ fn create_line_graph(
     data: Vec<(i32, i32)>,
     options: &GraphOptions,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    // let mut buffer = vec![0u8; (options.width * options.height * 4) as usize];
-    let width = options.width;
-    let height = options.height;
-    let mut raw_buffer = vec![0u8; (width * height * 4) as usize];
+    // Create a temporary file-based bitmap solution
+    let filename = "temp_graph.png";
     {
-        let root = BitMapBackend::with_buffer(&mut raw_buffer, (width, height)).into_drawing_area();
+        // Create a file-based bitmap backend
+        let root = BitMapBackend::new(filename, (options.width, options.height))
+            .into_drawing_area();
         root.fill(&WHITE)?;
 
         let min_x = data.iter().map(|(x, _)| x).min().unwrap_or(&0);
@@ -210,24 +207,20 @@ fn create_line_graph(
 
         chart.draw_series(LineSeries::new(
             data.iter().map(|&(x, y)| (x as f64, y as f64)),
-            &RED,
+            &BLUE,
         ))?;
 
         root.present()?;
     }
-    let img_buffer: ImageBuffer<Rgba<u8>, _> = ImageBuffer::from_raw(width, height, raw_buffer)
-        .ok_or("Failed to create ImageBuffer from raw data")?;
 
-    // Step 5: Encode the image buffer as PNG into a new Vec<u8>
-    let mut png_bytes = Vec::new();
-    img_buffer.write_to(
-        &mut Cursor::new(&mut png_bytes),
-        image::ImageOutputFormat::Png,
-    )?;
-
-    Ok(png_bytes)
-    // Ok(buffer)
+    // Read the file directly
+    let mut file = std::fs::File::open("temp_graph.png")?;
+    let mut buffer = Vec::new();
+    use std::io::Read;
+    file.read_to_end(&mut buffer)?;
+    Ok(buffer)
 }
+
 
 /// Saves a line graph to a file
 fn save_line_graph(
@@ -274,12 +267,11 @@ fn create_bar_graph(
     data: Vec<(i32, i32)>,
     options: &GraphOptions,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    // print all the inputs first for debugging :
-    println!("Data: {:?}", data);
-    println!("Options: {:?}", options);
-    let mut buffer = vec![0u8; (options.width * options.height * 4) as usize]; // Preallocate buffer
+    // Create a temporary file-based bitmap solution
+    let filename = "temp_graph.png";
     {
-        let root = BitMapBackend::with_buffer(&mut buffer, (options.width, options.height))
+        // Create a file-based bitmap backend
+        let root = BitMapBackend::new(filename, (options.width, options.height))
             .into_drawing_area();
         root.fill(&WHITE)?;
 
@@ -303,32 +295,24 @@ fn create_bar_graph(
             .y_desc(&options.y_label)
             .draw()?;
 
+        // Draw wider bars with solid fill and clear borders
         chart.draw_series(data.iter().map(|&(x, y)| {
-            let bar = Rectangle::new(
-                [((x as f64 - 0.4) as i32, 0), ((x as f64 + 0.4) as i32, y)],
+            Rectangle::new(
+                [(x - 2, 0), (x + 2, y)],
                 BLUE.filled(),
-            );
-            bar
+            )
         }))?;
 
         root.present()?;
     }
-    // Convert the buffer to a PNG image
-    // buffer should not move out of scope
-    // let img_buffer: ImageBuffer<Rgba<u8>, _> = ImageBuffer::from_raw(options.width, options.height, buffer)
-    //     .ok_or("Failed to create ImageBuffer from raw data")?;
-    // //how should i see this image buffer
-    // // Step 5: Encode the image buffer as PNG into a new Vec<u8>
-    // let mut png_bytes = Vec::new();
-    // img_buffer.write_to(
-    //     &mut Cursor::new(&mut png_bytes),
-    //     image::ImageOutputFormat::Png,
-    // )?;
-    // // Step 6: Return the PNG bytes
-    // png_bytes
-    //     .write_to(&mut Cursor::new(&mut buffer), image::ImageOutputFormat::Png)
-    //     .expect("Failed to write PNG data");
-    Ok(buffer)
+    
+    // Read the file directly
+    let png_data = std::fs::read(filename)?;
+    
+    // Clean up
+    std::fs::remove_file(filename)?;
+    
+    Ok(png_data)
 }
 
 /// Saves a bar graph to a file
@@ -377,10 +361,11 @@ fn create_scatter_graph(
     data: Vec<(i32, i32)>,
     options: &GraphOptions,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    // Preallocate the buffer with width * height * 4 (RGBA)
-    let mut buffer = vec![0u8; (options.width * options.height * 4) as usize];
+    // Create a temporary file-based bitmap solution
+    let filename = "temp_graph.png";
     {
-        let root = BitMapBackend::with_buffer(&mut buffer, (options.width, options.height))
+        // Create a file-based bitmap backend
+        let root = BitMapBackend::new(filename, (options.width, options.height))
             .into_drawing_area();
         root.fill(&WHITE)?;
 
@@ -412,8 +397,14 @@ fn create_scatter_graph(
 
         root.present()?;
     }
-
-    Ok(buffer)
+    
+    // Read the file directly
+    let png_data = std::fs::read(filename)?;
+    
+    // Clean up
+    std::fs::remove_file(filename)?;
+    
+    Ok(png_data)
 }
 
 /// Saves a scatter plot to a file
@@ -461,10 +452,11 @@ fn create_area_graph(
     data: Vec<(i32, i32)>,
     options: &GraphOptions,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    // Preallocate the buffer with width * height * 4 bytes (RGBA)
-    let mut buffer = vec![0u8; (options.width * options.height * 4) as usize];
+    // Create a temporary file-based bitmap solution
+    let filename = "temp_graph.png";
     {
-        let root = BitMapBackend::with_buffer(&mut buffer, (options.width, options.height))
+        // Create a file-based bitmap backend
+        let root = BitMapBackend::new(filename, (options.width, options.height))
             .into_drawing_area();
         root.fill(&WHITE)?;
 
@@ -481,7 +473,7 @@ fn create_area_graph(
             .margin(10)
             .x_label_area_size(30)
             .y_label_area_size(40)
-            .build_cartesian_2d(x_range, y_range)?;
+            .build_cartesian_2d(x_range.clone(), y_range.clone())?;
 
         chart
             .configure_mesh()
@@ -493,20 +485,28 @@ fn create_area_graph(
         let mut sorted_data = data.clone();
         sorted_data.sort_by_key(|&(x, _)| x);
 
-        chart.draw_series(
-            AreaSeries::new(
-                sorted_data.iter().map(|&(x, y)| (x as f64, y as f64)),
-                0.0,
-                &BLUE.mix(0.2),
-            )
-            .border_style(&BLUE),
-        )?;
+        use plotters::series::AreaSeries;
+        use plotters::style::RGBAColor;
 
+        // Draw the area graph
+        chart.draw_series(AreaSeries::new(
+            sorted_data.iter().map(|&(x, y)| (x as f64, y as f64)),
+            0.0,
+            &RGBAColor(30, 144, 255, 0.5), // semi-transparent blue
+        ))?;
+        
         root.present()?;
     }
 
+    // Read the file directly
+    let mut file = std::fs::File::open(filename)?;
+    let mut buffer = Vec::new();
+    use std::io::Read;
+    file.read_to_end(&mut buffer)?;
     Ok(buffer)
 }
+
+
 
 /// Saves an area graph to a file
 fn save_area_graph(
