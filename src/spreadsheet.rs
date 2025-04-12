@@ -961,4 +961,143 @@ impl Spreadsheet {
 
         *status_out = "ok".to_string();
     }
+
+    pub fn spreadsheet_display(&self) {
+        let end_row = if self.view_row + 10 < self.rows {
+            self.view_row + 10
+        } else {
+            self.rows
+        };
+
+        let end_col = if self.view_col + 10 < self.cols {
+            self.view_col + 10
+        } else {
+            self.cols
+        };
+
+        // Print column headers
+        print!("\t\t");
+        for col in (self.view_col + 1)..=end_col {
+            print!("{}\t\t", Self::col_to_letter(col));
+        }
+        println!();
+
+        // Print rows
+        for row in (self.view_row + 1)..=end_row {
+            print!("{}\t\t", row);
+            for col in (self.view_col + 1)..=end_col {
+                let index = ((row - 1) * self.cols + (col - 1)) as usize;
+                if let Some(cell) = self.cells.get(index).and_then(|opt| opt.as_ref()) {
+                    if cell.error {
+                        print!("ERR\t\t");
+                    } else {
+                        print!("{:<16}", cell.value);
+                    }
+                } else {
+                    print!("0\t\t");
+                }
+            }
+            println!();
+        }
+    }
+
+    pub fn is_valid_command(&self, cell_name: &str, formula: &str) -> bool {
+        if cell_name.is_empty() || formula.is_empty() {
+            return false;
+        }
+
+        // Check if valid cell name
+        if self.spreadsheet_parse_cell_name(cell_name).is_none() {
+            return false;
+        }
+
+        // Check if valid formula
+        if formula.is_empty() {
+            return false;
+        }
+
+        // Check for function call pattern: FUNC(...)
+        let func_regex = regex::Regex::new(r"^([A-Za-z]+)\((.*)\)$").unwrap();
+        if let Some(captures) = func_regex.captures(formula) {
+            let func = captures.get(1).unwrap().as_str();
+            let args = captures.get(2).unwrap().as_str();
+
+            if func.eq_ignore_ascii_case("SLEEP") {
+                if args.is_empty() {
+                    return false;
+                }
+                // Check if args is a valid integer
+                if args.parse::<i32>().is_ok() {
+                    return true;
+                }
+                // Check if args is a valid cell reference
+                if self.spreadsheet_parse_cell_name(args).is_some() {
+                    return true;
+                }
+                return false;
+            } else {
+                // Check for range functions like MIN, MAX, etc.
+                if let Some(colon_pos) = args.find(':') {
+                    let (start, end) = args.split_at(colon_pos);
+                    let end = &end[1..]; // Skip the colon
+
+                    if let (Some((start_row, start_col)), Some((end_row, end_col))) = (
+                        self.spreadsheet_parse_cell_name(start.trim()),
+                        self.spreadsheet_parse_cell_name(end.trim()),
+                    ) {
+                        if start_row <= end_row && start_col <= end_col {
+                            return matches!(
+                                func.to_uppercase().as_str(),
+                                "MIN" | "MAX" | "SUM" | "AVG" | "STDEV"
+                            );
+                        }
+                    }
+                }
+                return false;
+            }
+        }
+
+        // Check if the formula is a cell reference (e.g., A1)
+        let cell_regex = regex::Regex::new(r"^[A-Za-z]+[0-9]+$").unwrap();
+        if cell_regex.is_match(formula) {
+            return self.spreadsheet_parse_cell_name(formula).is_some();
+        }
+
+        // Check for arithmetic expressions
+        let mut chars = formula.chars();
+
+        fn parse_operand(chars: &mut std::str::Chars) -> bool {
+            if let Some(c) = chars.next() {
+                if c == '+' || c == '-' {
+                    // Skip the sign
+                } else if c.is_ascii_digit() || c.is_ascii_alphabetic() {
+                    // Continue parsing the operand
+                    while let Some(c) = chars.next() {
+                        if !c.is_ascii_digit() && !c.is_ascii_alphabetic() {
+                            break;
+                        }
+                    }
+                    return true;
+                }
+            }
+            false
+        }
+
+        if !parse_operand(&mut chars) {
+            return false;
+        }
+
+        if let Some(op) = chars.next() {
+            if "+-*/".contains(op) {
+                // Continue parsing the second operand
+                if !parse_operand(&mut chars) {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+
+        chars.next().is_none()
+    }
 }

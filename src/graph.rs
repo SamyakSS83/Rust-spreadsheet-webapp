@@ -1,6 +1,9 @@
 use crate::spreadsheet::Spreadsheet;
 use plotters::prelude::*;
-
+use std::io::Cursor;
+use image::{ImageBuffer, Rgba};
+// use std::io::Read;
+ 
 #[derive(Clone)]
 
 pub enum GraphType {
@@ -169,14 +172,17 @@ fn parse_ranges(
     Ok((x_values, y_values))
 }
 
-/// Creates a line graph
+// / Creates a line graph
 fn create_line_graph(
     data: Vec<(i32, i32)>,
     options: &GraphOptions,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let mut buffer = vec![0u8; (options.width * options.height * 4) as usize];
+    // let mut buffer = vec![0u8; (options.width * options.height * 4) as usize];
+    let width = options.width;
+    let height = options.height;
+    let mut raw_buffer = vec![0u8; (width * height * 4) as usize];
     {
-        let root = BitMapBackend::with_buffer(&mut buffer, (options.width, options.height))
+        let root = BitMapBackend::with_buffer(&mut raw_buffer, (width, height))
             .into_drawing_area();
         root.fill(&WHITE)?;
 
@@ -208,9 +214,17 @@ fn create_line_graph(
 
         root.present()?;
     }
+    let img_buffer: ImageBuffer<Rgba<u8>, _> = ImageBuffer::from_raw(width, height, raw_buffer)
+        .ok_or("Failed to create ImageBuffer from raw data")?;
 
-    Ok(buffer)
+    // Step 5: Encode the image buffer as PNG into a new Vec<u8>
+    let mut png_bytes = Vec::new();
+    img_buffer.write_to(&mut Cursor::new(&mut png_bytes), image::ImageOutputFormat::Png)?;
+
+    Ok(png_bytes)
+    // Ok(buffer)
 }
+
 
 /// Saves a line graph to a file
 fn save_line_graph(

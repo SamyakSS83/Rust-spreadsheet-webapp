@@ -6,7 +6,7 @@ document.addEventListener("DOMContentLoaded", function() {
     const saveSheetButton = document.getElementById("save-sheet");
     const formulaInput = document.getElementById("formula-input");
     const spreadsheetContainer = document.getElementById("spreadsheet-container");
-
+    
     newSheetButton.addEventListener("click", function() {
         const rows = prompt("Enter number of rows:");
         const cols = prompt("Enter number of columns:");
