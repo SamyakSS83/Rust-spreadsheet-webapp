@@ -1,9 +1,9 @@
 use crate::spreadsheet::Spreadsheet;
+use image::{ImageBuffer, Rgba};
 use plotters::prelude::*;
 use std::io::Cursor;
-use image::{ImageBuffer, Rgba};
 // use std::io::Read;
- 
+
 #[derive(Clone)]
 
 pub enum GraphType {
@@ -182,8 +182,7 @@ fn create_line_graph(
     let height = options.height;
     let mut raw_buffer = vec![0u8; (width * height * 4) as usize];
     {
-        let root = BitMapBackend::with_buffer(&mut raw_buffer, (width, height))
-            .into_drawing_area();
+        let root = BitMapBackend::with_buffer(&mut raw_buffer, (width, height)).into_drawing_area();
         root.fill(&WHITE)?;
 
         let min_x = data.iter().map(|(x, _)| x).min().unwrap_or(&0);
@@ -219,12 +218,14 @@ fn create_line_graph(
 
     // Step 5: Encode the image buffer as PNG into a new Vec<u8>
     let mut png_bytes = Vec::new();
-    img_buffer.write_to(&mut Cursor::new(&mut png_bytes), image::ImageOutputFormat::Png)?;
+    img_buffer.write_to(
+        &mut Cursor::new(&mut png_bytes),
+        image::ImageOutputFormat::Png,
+    )?;
 
     Ok(png_bytes)
     // Ok(buffer)
 }
-
 
 /// Saves a line graph to a file
 fn save_line_graph(

@@ -59,9 +59,6 @@ struct GraphRequest {
     graph_type: String,
 }
 
-
-
-
 pub async fn run(rows: i32, cols: i32) -> Result<(), Box<dyn std::error::Error>> {
     // Create spreadsheet
     let sheet = Spreadsheet::spreadsheet_create(rows, cols).expect("Failed to create spreadsheet");
@@ -122,11 +119,13 @@ async fn generate_graph(
             // println!("{:?}", img_data),
             [("Content-Type", "image/png")],
             img_data,
-        ).into_response(),
+        )
+            .into_response(),
         Err(e) => (
             StatusCode::BAD_REQUEST,
             format!("Failed to create graph: {}", e),
-        ).into_response(),
+        )
+            .into_response(),
     }
 }
 
