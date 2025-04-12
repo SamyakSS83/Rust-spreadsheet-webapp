@@ -118,8 +118,6 @@ async fn generate_graph(
 
     match create_graph(&sheet, &payload.x_range, &payload.y_range, options) {
         Ok(img_data) => (
-            // printing of the Vec<u8> for debugging purpose :
-            // println!("{:?}", img_data),
             [("Content-Type", "image/png")],
             img_data,
         )

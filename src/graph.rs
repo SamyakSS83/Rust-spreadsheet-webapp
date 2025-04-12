@@ -1,5 +1,6 @@
 use crate::spreadsheet::Spreadsheet;
 use plotters::prelude::*;
+use std::fs::remove_file;
 
 #[derive(Clone)]
 #[derive(Debug)]
@@ -214,10 +215,11 @@ fn create_line_graph(
     }
 
     // Read the file directly
-    let mut file = std::fs::File::open("temp_graph.png")?;
+    let mut file = std::fs::File::open(filename)?;
     let mut buffer = Vec::new();
     use std::io::Read;
     file.read_to_end(&mut buffer)?;
+    remove_file(filename)?;
     Ok(buffer)
 }
 
@@ -310,7 +312,7 @@ fn create_bar_graph(
     let png_data = std::fs::read(filename)?;
     
     // Clean up
-    std::fs::remove_file(filename)?;
+    remove_file(filename)?;
     
     Ok(png_data)
 }
@@ -402,7 +404,7 @@ fn create_scatter_graph(
     let png_data = std::fs::read(filename)?;
     
     // Clean up
-    std::fs::remove_file(filename)?;
+    remove_file(filename)?;
     
     Ok(png_data)
 }
@@ -503,6 +505,7 @@ fn create_area_graph(
     let mut buffer = Vec::new();
     use std::io::Read;
     file.read_to_end(&mut buffer)?;
+    remove_file(filename)?;
     Ok(buffer)
 }
 

@@ -298,11 +298,8 @@
 
                     const blob = await response.blob();
                     const imgUrl = URL.createObjectURL(blob);
-                    console.log("Image URL generated:", imgUrl); 
                     document.getElementById("graph-preview").src = imgUrl;
                     document.getElementById("graph-display-modal").classList.remove("hidden");
-                    console.log("Blob type:", blob.type);
-                    console.log("Blob size:", blob.size);
 
                     const a = document.createElement("a");
                     a.href = imgUrl;
@@ -313,7 +310,6 @@
                 } catch (error) {
                     alert("Error: " + error.message);
                 }
-                console.log({ graphtitle, xRange, yRange, type, xLabel, yLabel });
 
                 modal.classList.add("hidden");
             });
