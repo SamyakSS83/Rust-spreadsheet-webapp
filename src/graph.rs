@@ -1,10 +1,11 @@
 use crate::spreadsheet::Spreadsheet;
-use image::{ImageBuffer, Rgba};
+use image::{codecs::png, ImageBuffer, Rgba};
 use plotters::prelude::*;
 use std::io::Cursor;
 // use std::io::Read;
 
 #[derive(Clone)]
+#[derive(Debug)]
 
 pub enum GraphType {
     Line,
@@ -14,6 +15,7 @@ pub enum GraphType {
     Area,
 }
 #[derive(Clone)]
+#[derive(Debug)]
 pub struct GraphOptions {
     pub title: String,
     pub x_label: String,
@@ -272,6 +274,9 @@ fn create_bar_graph(
     data: Vec<(i32, i32)>,
     options: &GraphOptions,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    // print all the inputs first for debugging :
+    println!("Data: {:?}", data);
+    println!("Options: {:?}", options);
     let mut buffer = vec![0u8; (options.width * options.height * 4) as usize]; // Preallocate buffer
     {
         let root = BitMapBackend::with_buffer(&mut buffer, (options.width, options.height))
@@ -308,7 +313,21 @@ fn create_bar_graph(
 
         root.present()?;
     }
-
+    // Convert the buffer to a PNG image
+    // buffer should not move out of scope
+    // let img_buffer: ImageBuffer<Rgba<u8>, _> = ImageBuffer::from_raw(options.width, options.height, buffer)
+    //     .ok_or("Failed to create ImageBuffer from raw data")?;
+    // //how should i see this image buffer
+    // // Step 5: Encode the image buffer as PNG into a new Vec<u8>
+    // let mut png_bytes = Vec::new();
+    // img_buffer.write_to(
+    //     &mut Cursor::new(&mut png_bytes),
+    //     image::ImageOutputFormat::Png,
+    // )?;
+    // // Step 6: Return the PNG bytes
+    // png_bytes
+    //     .write_to(&mut Cursor::new(&mut buffer), image::ImageOutputFormat::Png)
+    //     .expect("Failed to write PNG data");
     Ok(buffer)
 }
 

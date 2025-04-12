@@ -290,29 +290,29 @@
                         body: JSON.stringify(payload),
                     });
 
+                    console.log("Content-Type:", response.headers.get("Content-Type"));
+
                     if (!response.ok) {
                         throw new Error("Graph generation failed");
                     }
 
-                    // Display the graph (assuming it returns an image/png)
-                    // const blob = await response.blob();
-                    // const imageUrl = URL.createObjectURL(blob);
-                    // const img = document.createElement("img");
-                    // img.src = imageUrl;
-
-                    // const modal = document.getElementById("graph-modal");
-                    // modal.innerHTML += img.outerHTML;
-
                     const blob = await response.blob();
                     const imgUrl = URL.createObjectURL(blob);
+                    console.log("Image URL generated:", imgUrl); 
                     document.getElementById("graph-preview").src = imgUrl;
                     document.getElementById("graph-display-modal").classList.remove("hidden");
+                    console.log("Blob type:", blob.type);
+                    console.log("Blob size:", blob.size);
+
+                    const a = document.createElement("a");
+                    a.href = imgUrl;
+                    a.download = "graph.png";
+                    a.click();
+
 
                 } catch (error) {
                     alert("Error: " + error.message);
                 }
-                // TODO: Use the input values to create the graph
-                // graph.rs has function of create_graph 
                 console.log({ graphtitle, xRange, yRange, type, xLabel, yLabel });
 
                 modal.classList.add("hidden");
