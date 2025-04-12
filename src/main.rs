@@ -1,8 +1,8 @@
 mod app;
 mod cell;
+mod graph;
 mod saving;
 mod spreadsheet;
-mod graph;  
 
 use std::env;
 

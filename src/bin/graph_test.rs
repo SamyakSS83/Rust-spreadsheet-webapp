@@ -4,9 +4,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for (name, file_path) in graphs {
         println!("Created {} graph at {}", name, file_path);
-
-        
     }
-    
+
     Ok(())
 }
