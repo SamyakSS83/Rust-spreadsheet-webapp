@@ -1005,23 +1005,23 @@ impl Spreadsheet {
         if cell_name.is_empty() || formula.is_empty() {
             return false;
         }
-
+    
         // Check if valid cell name
         if self.spreadsheet_parse_cell_name(cell_name).is_none() {
             return false;
         }
-
-        // Check if valid formula
+    
+        // Check if formula is empty (already checked above, redundant)
         if formula.is_empty() {
             return false;
         }
-
+    
         // Check for function call pattern: FUNC(...)
         let func_regex = regex::Regex::new(r"^([A-Za-z]+)\((.*)\)$").unwrap();
         if let Some(captures) = func_regex.captures(formula) {
             let func = captures.get(1).unwrap().as_str();
             let args = captures.get(2).unwrap().as_str();
-
+    
             if func.eq_ignore_ascii_case("SLEEP") {
                 if args.is_empty() {
                     return false;
@@ -1040,7 +1040,7 @@ impl Spreadsheet {
                 if let Some(colon_pos) = args.find(':') {
                     let (start, end) = args.split_at(colon_pos);
                     let end = &end[1..]; // Skip the colon
-
+    
                     if let (Some((start_row, start_col)), Some((end_row, end_col))) = (
                         self.spreadsheet_parse_cell_name(start.trim()),
                         self.spreadsheet_parse_cell_name(end.trim()),
@@ -1056,48 +1056,54 @@ impl Spreadsheet {
                 return false;
             }
         }
-
-        // Check if the formula is a cell reference (e.g., A1)
-        let cell_regex = regex::Regex::new(r"^[A-Za-z]+[0-9]+$").unwrap();
-        if cell_regex.is_match(formula) {
-            return self.spreadsheet_parse_cell_name(formula).is_some();
+    
+        // Check if the formula is a single cell reference (e.g., A1)
+        if self.spreadsheet_parse_cell_name(formula).is_some() {
+            return true;
         }
-
-        // Check for arithmetic expressions
-        let mut chars = formula.chars();
-
-        fn parse_operand(chars: &mut std::str::Chars) -> bool {
-            if let Some(c) = chars.next() {
-                if c == '+' || c == '-' {
-                    // Skip the sign
-                } else if c.is_ascii_digit() || c.is_ascii_alphabetic() {
-                    // Continue parsing the operand
-                    while let Some(c) = chars.next() {
-                        if !c.is_ascii_digit() && !c.is_ascii_alphabetic() {
-                            break;
-                        }
-                    }
-                    return true;
-                }
-            }
-            false
+    
+        // Check for only some integer with optional sign on the rhs 
+        if formula.parse::<i32>().is_ok(){
+            return true;
         }
-
-        if !parse_operand(&mut chars) {
-            return false;
-        }
-
-        if let Some(op) = chars.next() {
-            if "+-*/".contains(op) {
-                // Continue parsing the second operand
-                if !parse_operand(&mut chars) {
-                    return false;
-                }
+        // Check for arithmetic expressions with cell references or numbers
+        self.is_valid_arithmetic_expression(formula)
+    }
+    fn is_valid_arithmetic_expression(&self, expr: &str) -> bool {
+        // Remove all spaces for easier parsing
+        let expr = expr.replace(" ", "");
+        
+        // Use regex to separate expression into components
+        let expr_regex = regex::Regex::new(
+            r"^(([+-]?[0-9]+)|([A-Za-z]+[0-9]+))([+\-*/])(([+-]?[0-9]+)|([A-Za-z]+[0-9]+))$"
+        ).unwrap();
+        
+        if let Some(captures) = expr_regex.captures(&expr) {
+            let first_operand = captures.get(1).unwrap().as_str();
+            let operator = captures.get(4).unwrap().as_str();
+            let second_operand = captures.get(5).unwrap().as_str();
+            
+            // Verify first operand
+            let is_first_valid = if first_operand.chars().next().unwrap().is_ascii_alphabetic() {
+                // It's a cell reference
+                self.spreadsheet_parse_cell_name(first_operand).is_some()
             } else {
-                return false;
-            }
+                // It's a number with optional sign
+                first_operand.parse::<i32>().is_ok()
+            };
+            
+            // Verify second operand
+            let is_second_valid = if second_operand.chars().next().unwrap().is_ascii_alphabetic() {
+                // It's a cell reference
+                self.spreadsheet_parse_cell_name(second_operand).is_some()
+            } else {
+                // It's a number with optional sign
+                second_operand.parse::<i32>().is_ok()
+            };
+            
+            return is_first_valid && is_second_valid;
         }
-
-        chars.next().is_none()
+        
+        false
     }
 }
