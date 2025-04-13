@@ -123,6 +123,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 } else {
                     sheet.spreadsheet_set_cell_value(cell_name, formula, &mut status);
                 }
+            } else if command == "UNDO" {
+                if sheet.undo_stack.is_empty() {
+                    status = String::from("no undo");
+                } else {
+                    sheet.spreadsheet_undo();
+                    status = String::from("ok");
+                }
+            } else if command == "REDO" {
+                if sheet.redo_stack.is_empty() {
+                    status = String::from("no redo");
+                } else {
+                    sheet.spreadsheet_redo();
+                    status = String::from("ok");
+                }
             } else {
                 status = String::from("invalid command");
             }

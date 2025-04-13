@@ -9,6 +9,8 @@ pub struct Spreadsheet {
     pub view_row: i32,
     pub view_col: i32,
     pub cells: Vec<Option<Box<Cell>>>,
+    pub undo_stack: Vec<(Option<String>,i32,i32,i32,bool)>,
+    pub redo_stack: Vec<(Option<String>,i32,i32,i32,bool)>,
     // pub cells: Vec<Vec<Option<Cell>>>,
 }
 
@@ -20,6 +22,8 @@ impl Spreadsheet {
             view_row: 0,
             view_col: 0,
             cells: Vec::with_capacity((rows * cols) as usize),
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
         });
 
         // Initialize the vector with None values
@@ -1030,6 +1034,47 @@ impl Spreadsheet {
         *status_out = "ok".to_string();
     }
 
+    pub fn spreadsheet_undo(& mut self){
+        // iterate through undo_stack extract cell name --> update dependencies --> set value 
+        for i in 0..self.undo_stack.len(){
+            let (formula_new, row,col,value,error_state) = self.undo_stack.pop().unwrap();
+            let cell_name = Self::get_cell_name(row,col);
+            // add this to redo_stack
+            // get the current formula and value
+            // get immutable reference of cell 
+            let index = ((row - 1) * self.cols + (col - 1)) as usize;
+            let cell = match self.cells.get(index).and_then(|opt| opt.as_ref()) {
+                Some(cell) => cell,
+                None => {
+                    continue; // Skip if cell doesn't exist
+                }
+            };
+            // clone should be affordable here. because anyways we will chaging the formula
+            // still check if clone is needed
+            self.redo_stack.push((cell.formula.clone(), cell.row, cell.col, cell.value, cell.error));
+            // remove old dependencies
+            self.remove_old_dependents(&cell_name);
+
+            // update dependencies
+            if let Some(formula) = &formula_new {
+                if !formula.is_empty() {
+                    self.update_dependencies(&cell_name, &formula);
+                }
+            }
+            // set value
+            if let Some(cell) = self.cells.get_mut(index).and_then(|opt| opt.as_mut()) {
+                cell.formula = formula_new;
+                cell.value = value;
+                cell.error = error_state;
+            }
+        }
+        
+    }
+
+    pub fn spreadsheet_redo(& mut self){
+        
+    }
+
     pub fn spreadsheet_display(&self) {
         let end_row = if self.view_row + 10 < self.rows {
             self.view_row + 10
@@ -1083,6 +1128,7 @@ impl Spreadsheet {
         if formula.is_empty() {
             return false;
         }
+
     
         // Check for function call pattern: FUNC(...)
         let func_regex = regex::Regex::new(r"^([A-Za-z]+)\((.*)\)$").unwrap();
