@@ -1048,7 +1048,7 @@ impl Spreadsheet {
                         if start_row <= end_row && start_col <= end_col {
                             return matches!(
                                 func.to_uppercase().as_str(),
-                                "MIN" | "MAX" | "SUM" | "AVG" | "STDEV"
+                                "MIN" | "MAX" | "SUM" | "AVG" | "STDEV" | "CUT" | "COPY"
                             );
                         }
                     }
