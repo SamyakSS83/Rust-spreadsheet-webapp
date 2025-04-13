@@ -1046,10 +1046,30 @@ impl Spreadsheet {
                         self.spreadsheet_parse_cell_name(end.trim()),
                     ) {
                         if start_row <= end_row && start_col <= end_col {
-                            return matches!(
+                            if matches!(
                                 func.to_uppercase().as_str(),
                                 "MIN" | "MAX" | "SUM" | "AVG" | "STDEV" | "CUT" | "COPY"
-                            );
+                            ){
+                                return true;
+                            }
+
+                            if matches!(func.to_uppercase().as_str(), "CUT" | "COPY") {
+                                // Parse the destination cell (cell_name)
+                                //spreadsheet parse cell name gives 1 based row and col
+                                if let Some((dest_row, dest_col)) = self.spreadsheet_parse_cell_name(cell_name) {
+                                    // Calculate offsets
+                                    let row_offset = dest_row as isize - start_row as isize;
+                                    let col_offset = dest_col as isize - start_col as isize;
+                                    
+                                    // Calculate the final destination cell coordinates
+                                    let final_row = end_row as isize + row_offset;
+                                    let final_col = end_col as isize + col_offset;
+                                    
+                                    return final_row > 0 && final_row <= self.rows as isize && 
+                                           final_col > 0 && final_col <= self.cols as isize ;
+                                }
+                                return false;
+                            }
                         }
                     }
                 }
