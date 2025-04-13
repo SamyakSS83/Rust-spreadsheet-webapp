@@ -4,9 +4,12 @@ mod graph;
 mod saving;
 mod spreadsheet;
 
-use crate::spreadsheet::{Spreadsheet, Spreadsheet as SpreadsheetTrait};
+use cop::spreadsheet::Spreadsheet;
+
+// use crate::spreadsheet::{Spreadsheet, Spreadsheet as SpreadsheetTrait};
 use std::env;
 use std::io::{self, Write};
+use std::os::macos::raw::stat;
 use std::time::Instant;
 
 #[tokio::main]
@@ -44,7 +47,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut elapsed_time;
         let mut status = String::from("ok");
         let mut show = true;
-
         loop {
             if show {
                 sheet.spreadsheet_display();
@@ -116,6 +118,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     status = String::from("invalid cell");
                 }
             } else if let Some(equal_pos) = command.find('=') {
+                sheet.undo_stack.clear();
                 let cell_name = &command[..equal_pos];
                 let formula = &command[equal_pos + 1..];
                 if !sheet.is_valid_command(cell_name, formula) {
@@ -126,7 +129,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else if command == "UNDO" {
                 if sheet.undo_stack.is_empty() {
                     status = String::from("no undo");
-                } else {
+                } else if sheet.undo_stack.len() == 1 {
+                    let (formula,row,col,value,err_state) = (sheet.undo_stack[0].0.clone(),sheet.undo_stack[0].1,sheet.undo_stack[0].2,sheet.undo_stack[0].3,sheet.undo_stack[0].4);
+                    let cell_name = Spreadsheet::get_cell_name(row, col);
+                    println!("Undoing: {} {} {} {}", cell_name,row, col, value);
+                    if let Some(formula) = formula {
+                        println!("Setting formula: {} {}", cell_name, formula);
+                        sheet.undo_stack.clear();
+                        sheet.spreadsheet_set_cell_value(&cell_name, &formula, &mut status);
+                    } else {
+                        println!("Setting value: {} {}", cell_name, value);
+                        sheet.spreadsheet_undo();
+                        status = String::from("ok");
+                    }
+                }
+                else {
                     sheet.spreadsheet_undo();
                     status = String::from("ok");
                 }

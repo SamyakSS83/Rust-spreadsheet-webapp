@@ -732,10 +732,10 @@ impl Spreadsheet {
         // Remove old dependencies
         self.remove_old_dependents(cell_name);
         // Add the new formula to the cell
-        let index = ((r - 1) * self.cols + (c - 1)) as usize;
-        if let Some(cell) = self.cells.get_mut(index).and_then(|opt| opt.as_mut()) {
-            cell.formula = Some(formula.to_string());
-        }
+        // let index = ((r - 1) * self.cols + (c - 1)) as usize;
+        // if let Some(cell) = self.cells.get_mut(index).and_then(|opt| opt.as_mut()) {
+        //     cell.formula = Some(formula.to_string());
+        // }
         // Now, process the formula to update dependencies.
 
         let ranges = ["MIN", "MAX", "AVG", "SUM", "STDEV"];
@@ -937,6 +937,7 @@ impl Spreadsheet {
                                             let dest_index = ((r as isize + row_offset -1 ) * self.cols as isize + (c as isize + col_offset - 1)) as usize;
                                             if dest_index < self.cells.len() {
                                                 if let Some(dest_cell) = self.cells.get_mut(dest_index).and_then(|opt| opt.as_mut()) {  
+                                                    self.undo_stack.push((dest_cell.formula.clone(), dest_cell.row, dest_cell.col, dest_cell.value, dest_cell.error));
                                                     dest_cell.formula = None; // Clear formula
                                                     dest_cell.value = src_val[cnter];
                                                     dest_cell.error = src_err[cnter]; // copy error state
@@ -984,7 +985,10 @@ impl Spreadsheet {
                 return;
             }
         };
-        // Update the cell's formula
+        // Update the cell's formula 
+        println!("pushing cell {}{} with formula: {:?}", cell.row, cell.col, cell.formula);
+        self.undo_stack.push((cell.formula.clone(), cell.row, cell.col, cell.value, cell.error));
+        println!("length of stack after push {}", self.undo_stack.len());
         cell.formula = Some(formula.to_string());
         // mutable reference not needed anymore
         // take cell as immutable
@@ -1035,6 +1039,7 @@ impl Spreadsheet {
     }
 
     pub fn spreadsheet_undo(& mut self){
+        println!("undo stack size {}",self.undo_stack.len());
         // iterate through undo_stack extract cell name --> update dependencies --> set value 
         for i in 0..self.undo_stack.len(){
             let (formula_new, row,col,value,error_state) = self.undo_stack.pop().unwrap();
@@ -1063,11 +1068,14 @@ impl Spreadsheet {
             }
             // set value
             if let Some(cell) = self.cells.get_mut(index).and_then(|opt| opt.as_mut()) {
+                println!("enters here {:?} {} {}",formula_new,row,col);
                 cell.formula = formula_new;
                 cell.value = value;
                 cell.error = error_state;
             }
         }
+        // make the undo stack empty
+        self.undo_stack.clear();
         
     }
 
