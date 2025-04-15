@@ -1000,10 +1000,10 @@ impl Spreadsheet {
             }
         };
         // Update the cell's formula
-        println!(
-            "pushing cell {}{} with formula: {:?}",
-            cell.row, cell.col, cell.formula
-        );
+        // println!(
+        //     "pushing cell {}{} with formula: {:?}",
+        //     cell.row, cell.col, cell.formula
+        // );
         self.undo_stack.push((
             cell.formula.clone(),
             cell.row,
@@ -1011,7 +1011,7 @@ impl Spreadsheet {
             cell.value,
             cell.error,
         ));
-        println!("length of stack after push {}", self.undo_stack.len());
+        // println!("length of stack after push {}", self.undo_stack.len());
         cell.formula = Some(formula.to_string());
         // mutable reference not needed anymore
         // take cell as immutable
