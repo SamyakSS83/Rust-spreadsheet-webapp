@@ -117,11 +117,7 @@ async fn generate_graph(
     };
 
     match create_graph(&sheet, &payload.x_range, &payload.y_range, options) {
-        Ok(img_data) => (
-            [("Content-Type", "image/png")],
-            img_data,
-        )
-            .into_response(),
+        Ok(img_data) => ([("Content-Type", "image/png")], img_data).into_response(),
         Err(e) => (
             StatusCode::BAD_REQUEST,
             format!("Failed to create graph: {}", e),

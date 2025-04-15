@@ -9,7 +9,7 @@ use cop::spreadsheet::Spreadsheet;
 // use crate::spreadsheet::{Spreadsheet, Spreadsheet as SpreadsheetTrait};
 use std::env;
 use std::io::{self, Write};
-use std::os::macos::raw::stat;
+// use std::os::macos::raw::stat;
 use std::time::Instant;
 
 #[tokio::main]
@@ -130,9 +130,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if sheet.undo_stack.is_empty() {
                     status = String::from("no undo");
                 } else if sheet.undo_stack.len() == 1 {
-                    let (formula,row,col,value,err_state) = (sheet.undo_stack[0].0.clone(),sheet.undo_stack[0].1,sheet.undo_stack[0].2,sheet.undo_stack[0].3,sheet.undo_stack[0].4);
+                    let (formula, row, col, value, err_state) = (
+                        sheet.undo_stack[0].0.clone(),
+                        sheet.undo_stack[0].1,
+                        sheet.undo_stack[0].2,
+                        sheet.undo_stack[0].3,
+                        sheet.undo_stack[0].4,
+                    );
                     let cell_name = Spreadsheet::get_cell_name(row, col);
-                    println!("Undoing: {} {} {} {}", cell_name,row, col, value);
+                    println!("Undoing: {} {} {} {}", cell_name, row, col, value);
                     if let Some(formula) = formula {
                         println!("Setting formula: {} {}", cell_name, formula);
                         sheet.undo_stack.clear();
@@ -142,8 +148,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         sheet.spreadsheet_undo();
                         status = String::from("ok");
                     }
-                }
-                else {
+                } else {
                     sheet.spreadsheet_undo();
                     status = String::from("ok");
                 }

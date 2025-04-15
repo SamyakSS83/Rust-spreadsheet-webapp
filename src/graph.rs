@@ -2,8 +2,7 @@ use crate::spreadsheet::Spreadsheet;
 use plotters::prelude::*;
 use std::fs::remove_file;
 
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 
 pub enum GraphType {
     Line,
@@ -12,8 +11,7 @@ pub enum GraphType {
     // Pie,
     Area,
 }
-#[derive(Clone)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct GraphOptions {
     pub title: String,
     pub x_label: String,
@@ -181,8 +179,8 @@ fn create_line_graph(
     let filename = "temp_graph.png";
     {
         // Create a file-based bitmap backend
-        let root = BitMapBackend::new(filename, (options.width, options.height))
-            .into_drawing_area();
+        let root =
+            BitMapBackend::new(filename, (options.width, options.height)).into_drawing_area();
         root.fill(&WHITE)?;
 
         let min_x = data.iter().map(|(x, _)| x).min().unwrap_or(&0);
@@ -222,7 +220,6 @@ fn create_line_graph(
     remove_file(filename)?;
     Ok(buffer)
 }
-
 
 /// Saves a line graph to a file
 fn save_line_graph(
@@ -273,8 +270,8 @@ fn create_bar_graph(
     let filename = "temp_graph.png";
     {
         // Create a file-based bitmap backend
-        let root = BitMapBackend::new(filename, (options.width, options.height))
-            .into_drawing_area();
+        let root =
+            BitMapBackend::new(filename, (options.width, options.height)).into_drawing_area();
         root.fill(&WHITE)?;
 
         let min_x = data.iter().map(|(x, _)| x).min().unwrap_or(&0);
@@ -298,22 +295,20 @@ fn create_bar_graph(
             .draw()?;
 
         // Draw wider bars with solid fill and clear borders
-        chart.draw_series(data.iter().map(|&(x, y)| {
-            Rectangle::new(
-                [(x - 2, 0), (x + 2, y)],
-                BLUE.filled(),
-            )
-        }))?;
+        chart.draw_series(
+            data.iter()
+                .map(|&(x, y)| Rectangle::new([(x - 2, 0), (x + 2, y)], BLUE.filled())),
+        )?;
 
         root.present()?;
     }
-    
+
     // Read the file directly
     let png_data = std::fs::read(filename)?;
-    
+
     // Clean up
     remove_file(filename)?;
-    
+
     Ok(png_data)
 }
 
@@ -367,8 +362,8 @@ fn create_scatter_graph(
     let filename = "temp_graph.png";
     {
         // Create a file-based bitmap backend
-        let root = BitMapBackend::new(filename, (options.width, options.height))
-            .into_drawing_area();
+        let root =
+            BitMapBackend::new(filename, (options.width, options.height)).into_drawing_area();
         root.fill(&WHITE)?;
 
         let min_x = data.iter().map(|(x, _)| x).min().unwrap_or(&0);
@@ -399,13 +394,13 @@ fn create_scatter_graph(
 
         root.present()?;
     }
-    
+
     // Read the file directly
     let png_data = std::fs::read(filename)?;
-    
+
     // Clean up
     remove_file(filename)?;
-    
+
     Ok(png_data)
 }
 
@@ -458,8 +453,8 @@ fn create_area_graph(
     let filename = "temp_graph.png";
     {
         // Create a file-based bitmap backend
-        let root = BitMapBackend::new(filename, (options.width, options.height))
-            .into_drawing_area();
+        let root =
+            BitMapBackend::new(filename, (options.width, options.height)).into_drawing_area();
         root.fill(&WHITE)?;
 
         let min_x = data.iter().map(|(x, _)| x).min().unwrap_or(&0);
@@ -496,7 +491,7 @@ fn create_area_graph(
             0.0,
             &RGBAColor(30, 144, 255, 0.5), // semi-transparent blue
         ))?;
-        
+
         root.present()?;
     }
 
@@ -508,8 +503,6 @@ fn create_area_graph(
     remove_file(filename)?;
     Ok(buffer)
 }
-
-
 
 /// Saves an area graph to a file
 fn save_area_graph(
