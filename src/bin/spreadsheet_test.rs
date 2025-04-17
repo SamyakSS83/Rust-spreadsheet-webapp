@@ -821,7 +821,7 @@ fn test_dependency_updates() {
         // Print the formula in B1
     }
 
-    // Now update B1's formula to "A2*2" so that only A2 is a dependency.
+    // Now update B1's formula to "A3*2" so that only A3 is a dependency.
     sheet.update_dependencies("B1", "A3*2");
 
     // Verify that A1 no longer has "B1" while A2 still does.
