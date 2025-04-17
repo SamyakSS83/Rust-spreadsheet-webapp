@@ -643,7 +643,7 @@ impl Spreadsheet {
     }
 
     pub fn remove_old_dependents(&mut self, cell_name: &str) {
-        eprintln!("Entered remove_old_dependents for cell: {cell_name}");
+        // eprintln!("Entered remove_old_dependents for cell: {cell_name}");
         // Parse the provided cell name to locate the current cell.
         let formula_and_deps = if let Some((r, c)) = self.spreadsheet_parse_cell_name(cell_name) {
             let index = ((r - 1) * self.cols + (c - 1)) as usize;
@@ -657,15 +657,17 @@ impl Spreadsheet {
             None
         };
 
+        // eprintln!("Formula and deps: {:?}", formula_and_deps);
+
         // Process formula if it exists
         if let Some(formula) = formula_and_deps {
-            eprintln!("Removing from formula: {formula}");
+            // eprintln!("Removing from formula: {formula}");
             let ranges = ["MIN", "MAX", "AVG", "SUM", "STDEV"];
             let mut processed_range = false;
             // Check if the formula starts with one of the range functions.
             for range in &ranges {
                 if formula.starts_with(range) {
-                    eprintln!("Entered range function: {range}");
+                    // eprintln!("Entered range function: {range}");
                     if let (Some(open_paren_idx), Some(close_paren_idx)) =
                         (formula.find('('), formula.find(')'))
                     {
@@ -703,10 +705,10 @@ impl Spreadsheet {
 
             // Non-range formula: remove dependency from the two cell references found.
             if !processed_range {
-                eprintln!(
-                    "Removing old dependents for cell: {} with formula: {}",
-                    cell_name, formula
-                );
+                // eprintln!(
+                //     "Removing old dependents for cell: {} with formula: {}",
+                //     cell_name, formula
+                // );
                 if let Ok((dep_r1, dep_r2, dep_c1, dep_c2, _)) = self.find_depends(&formula) {
                     if dep_r1 > 0 {
                         let dep_index = ((dep_r1 - 1) * self.cols + (dep_c1 - 1)) as usize;
@@ -733,17 +735,17 @@ impl Spreadsheet {
     }
 
     pub fn update_dependencies(&mut self, cell_name: &str, formula: &str) -> i32 {
-        eprintln!("Entered update_dependencies for cell: {cell_name} with formula: {formula}");
+        // eprintln!("Entered update_dependencies for cell: {cell_name} with formula: {formula}");
         // First, parse the cell—this mirrors C obtaining the current cell coordinates.
         let (r, c) = self.spreadsheet_parse_cell_name(cell_name).unwrap();
 
         // Remove old dependencies
         self.remove_old_dependents(cell_name);
         // Add the new formula to the cell
-        // let index = ((r - 1) * self.cols + (c - 1)) as usize;
-        // if let Some(cell) = self.cells.get_mut(index).and_then(|opt| opt.as_mut()) {
-        //     cell.formula = Some(formula.to_string());
-        // }
+        let index = ((r - 1) * self.cols + (c - 1)) as usize;
+        if let Some(cell) = self.cells.get_mut(index).and_then(|opt| opt.as_mut()) {
+            cell.formula = Some(formula.to_string());
+        }
         // Now, process the formula to update dependencies.
 
         let ranges = ["MIN", "MAX", "AVG", "SUM", "STDEV"];
