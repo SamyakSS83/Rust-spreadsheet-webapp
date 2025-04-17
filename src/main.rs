@@ -90,13 +90,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "w" if sheet.view_row > 0 => {
                         sheet.view_row = (sheet.view_row - 10).max(0);
                     }
-                    "s" if sheet.view_row < sheet.rows - 19 => {
+                    "s" if sheet.view_row < sheet.rows - 10 => {
                         sheet.view_row = (sheet.view_row + 10).min(sheet.rows - 10);
                     }
                     "a" if sheet.view_col > 0 => {
                         sheet.view_col = (sheet.view_col - 10).max(0);
                     }
-                    "d" if sheet.view_col < sheet.cols - 19 => {
+                    "d" if sheet.view_col < sheet.cols - 10 => {
                         sheet.view_col = (sheet.view_col + 10).min(sheet.cols - 10);
                     }
                     _ => {}
