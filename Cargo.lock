@@ -2126,7 +2126,6 @@ dependencies = [
  "tokio",
  "tower-http",
  "wasm-bindgen",
- "web-sys",
 ]
 
 [[package]]
