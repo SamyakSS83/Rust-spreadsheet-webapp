@@ -24,11 +24,11 @@ jobs:
     # - name: Build
     #   run: cargo build --verbose
     - name: Run Sheet tests
-      run: cargo run --package cop --bin spreadsheet_test 
+      run: cargo run --package spreadsheet --bin spreadsheet_test 
     - name: Run Cell tests
-      run: cargo run --package cop --bin cell_test
+      run: cargo run --package spreadsheet --bin cell_test
     - name : Saving Sheet
-      run: cargo run --package cop --bin saving_test
+      run: cargo run --package spreadsheet --bin saving_test
     - name: Check formatting
       run: cargo fmt -- --check
     - name: Clippy 
