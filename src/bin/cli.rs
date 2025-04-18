@@ -10,6 +10,7 @@ use std::time::Instant;
 
 // #[tokio::main]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let s = Instant::now(); // Start time for the entire program
     let args: Vec<String> = env::args().collect();
 
     // if args.len() > 1 && args[1] == "-dassi_nahi_to_rassi" {
@@ -163,6 +164,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // start_time = Instant::now();
     }
     // }
+    let e = s.elapsed().as_secs_f64(); // Calculate total elapsed time
+    println!("Total elapsed time: {:.1} seconds", e);
 
     Ok(())
 }
