@@ -1,6 +1,7 @@
 use crate::cell::{Cell, cell_create};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
+use std::time::Instant;
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Spreadsheet {
@@ -238,71 +239,130 @@ impl Spreadsheet {
             let r1 = r1 + 1;
             let r2 = r2 + 1;
 
-            count = (r2 - r1 + 1) * (c2 - c1 + 1);
-            let mut values = Vec::with_capacity(count as usize);
+            // new comment
+
+            // count = (r2 - r1 + 1) * (c2 - c1 + 1);
+            // let mut values = Vec::with_capacity(count as usize);
+
+            // for i in r1..=r2 {
+            //     for j in c1..=c2 {
+            //         let index = ((i - 1) * self.cols + (j - 1)) as usize;
+            //         if index < self.cells.len() {
+            //             if let Some(ref c) = self.cells[index] {
+            //                 if c.error {
+            //                     // cell.error = true;
+            //                     error = true;
+            //                     return (0, error);
+            //                 }
+            //                 values.push(c.value);
+            //             } else {
+            //                 values.push(0);
+            //             }
+            //         }
+            //     }
+            // }
+
+            // if func.eq_ignore_ascii_case("MIN") {
+            //     if values.is_empty() {
+            //         return (0, error);
+            //     }
+            //     // cell.error = false;
+            //     error = false;
+            //     return (*values.iter().min().unwrap_or(&0), error);
+            // } else if func.eq_ignore_ascii_case("MAX") {
+            //     if values.is_empty() {
+            //         return (0, error);
+            //     }
+            //     // cell.error = false;
+            //     error = false;
+            //     return (*values.iter().max().unwrap_or(&0), error);
+            // } else if func.eq_ignore_ascii_case("SUM") {
+            //     // cell.error = false;
+            //     error = false;
+            //     return (values.iter().sum(), error);
+            // } else if func.eq_ignore_ascii_case("AVG") {
+            //     if values.is_empty() {
+            //         return (0, error);
+            //     }
+            //     // cell.error = false;
+            //     error = false;
+            //     let sum: i32 = values.iter().sum();
+            //     return (sum / values.len() as i32, error);
+            // } else if func.eq_ignore_ascii_case("STDEV") {
+            //     if values.len() < 2 {
+            //         return (0, error);
+            //     }
+
+            //     let mean = values.iter().sum::<i32>() as f64 / values.len() as f64;
+            //     let variance = values
+            //         .iter()
+            //         .map(|&x| {
+            //             let diff = x as f64 - mean;
+            //             diff * diff
+            //         })
+            //         .sum::<f64>()
+            //         / values.len() as f64;
+
+            //     // cell.error = false;
+            //     error = false;
+            //     return ((variance.sqrt().round()) as i32, error);
+            // }
+
+            // new comment
+            let mut sum: i32 = 0;
+            let mut count: usize = 0;
+            let mut min_val: i32 = i32::MAX;
+            let mut max_val: i32 = i32::MIN;
+            let mut mean: f64 = 0.0;
+            let mut m2: f64 = 0.0; // for variance
+            let mut n: f64 = 0.0;
 
             for i in r1..=r2 {
                 for j in c1..=c2 {
                     let index = ((i - 1) * self.cols + (j - 1)) as usize;
                     if index < self.cells.len() {
-                        if let Some(ref c) = self.cells[index] {
+                        let val = if let Some(ref c) = self.cells[index] {
                             if c.error {
-                                // cell.error = true;
                                 error = true;
                                 return (0, error);
                             }
-                            values.push(c.value);
+                            c.value
                         } else {
-                            values.push(0);
+                            0
+                        };
+
+                        count += 1;
+                        sum += val;
+                        if val < min_val {
+                            min_val = val;
                         }
+                        if val > max_val {
+                            max_val = val;
+                        }
+
+                        // Welford's algorithm for variance
+                        n += 1.0;
+                        let delta = val as f64 - mean;
+                        mean += delta / n;
+                        m2 += delta * (val as f64 - mean);
                     }
                 }
             }
 
             if func.eq_ignore_ascii_case("MIN") {
-                if values.is_empty() {
-                    return (0, error);
-                }
-                // cell.error = false;
-                error = false;
-                return (*values.iter().min().unwrap_or(&0), error);
+                return (if count == 0 { 0 } else { min_val }, false);
             } else if func.eq_ignore_ascii_case("MAX") {
-                if values.is_empty() {
-                    return (0, error);
-                }
-                // cell.error = false;
-                error = false;
-                return (*values.iter().max().unwrap_or(&0), error);
+                return (if count == 0 { 0 } else { max_val }, false);
             } else if func.eq_ignore_ascii_case("SUM") {
-                // cell.error = false;
-                error = false;
-                return (values.iter().sum(), error);
+                return (sum, false);
             } else if func.eq_ignore_ascii_case("AVG") {
-                if values.is_empty() {
-                    return (0, error);
-                }
-                // cell.error = false;
-                error = false;
-                let sum: i32 = values.iter().sum();
-                return (sum / values.len() as i32, error);
+                return (if count == 0 { 0 } else { sum / count as i32 }, false);
             } else if func.eq_ignore_ascii_case("STDEV") {
-                if values.len() < 2 {
-                    return (0, error);
+                if count < 2 {
+                    return (0, false);
                 }
-
-                let mean = values.iter().sum::<i32>() as f64 / values.len() as f64;
-                let variance = values
-                    .iter()
-                    .map(|&x| {
-                        let diff = x as f64 - mean;
-                        diff * diff
-                    })
-                    .sum::<f64>()
-                    / values.len() as f64;
-
-                // cell.error = false;
-                error = false;
-                return ((variance.sqrt().round()) as i32, error);
+                let variance = m2 / n;
+                return (variance.sqrt().round() as i32, false);
             }
         }
 
@@ -902,88 +962,92 @@ impl Spreadsheet {
         let index = ((r_ - 1) * self.cols + (c_ - 1)) as usize;
 
         // Firstly, check if the formula is copy
-        // let func_regex = regex::Regex::new(r"^([A-Za-z]+)\((.*)\)$").unwrap();
-        // if let Some(captures) = func_regex.captures(formula) {
-        //     let func = captures.get(1).unwrap().as_str();
-        //     let args = captures.get(2).unwrap().as_str();
+        let func_regex = regex::Regex::new(r"^([A-Za-z]+)\((.*)\)$").unwrap();
+        if let Some(captures) = func_regex.captures(formula) {
+            let func = captures.get(1).unwrap().as_str();
+            let args = captures.get(2).unwrap().as_str();
 
-        //     // Check for range functions like MIN, MAX, etc.
-        //     if let Some(colon_pos) = args.find(':') {
-        //         let (start, end) = args.split_at(colon_pos);
-        //         let end = &end[1..]; // Skip the colon
+            // Check for range functions like MIN, MAX, etc.
+            if let Some(colon_pos) = args.find(':') {
+                let (start, end) = args.split_at(colon_pos);
+                let end = &end[1..]; // Skip the colon
 
-        //         if let (Some((start_row, start_col)), Some((end_row, end_col))) = (
-        //             self.spreadsheet_parse_cell_name(start.trim()),
-        //             self.spreadsheet_parse_cell_name(end.trim()),
-        //         ) {
-        //             if start_row <= end_row && start_col <= end_col {
-        //                 if matches!(func.to_uppercase().as_str(), "COPY") {
-        //                     // Parse the destination cell (cell_name)
-        //                     //spreadsheet parse cell name gives 1 based row and col
-        //                     if let Some((dest_row, dest_col)) =
-        //                         self.spreadsheet_parse_cell_name(cell_name)
-        //                     {
-        //                         // Calculate offsets
-        //                         let row_offset = dest_row as isize - start_row as isize;
-        //                         let col_offset = dest_col as isize - start_col as isize;
-        //                         // firstly iterate through all src_cells nd put them in some vector
-        //                         // then iterate through all dest cells nd put value from vectors in dest cells
-        //                         // can't be done in single iteration ; src and dest cells can be overlapping
-        //                         let mut src_val: Vec<i32> = Vec::new();
-        //                         let mut src_err: Vec<bool> = Vec::new();
-        //                         for r in start_row..=end_row {
-        //                             for c in start_col..=end_col {
-        //                                 let src_index = ((r - 1) * self.cols + (c - 1)) as usize;
-        //                                 if let Some(src_cell) =
-        //                                     self.cells.get(src_index).and_then(|opt| opt.as_ref())
-        //                                 {
-        //                                     src_val.push(src_cell.value);
-        //                                     src_err.push(src_cell.error);
-        //                                 }
-        //                             }
-        //                         }
-        //                         // now iterate through all dest cells and put value from src_val in dest cells
-        //                         let mut cnter = 0;
-        //                         for r in start_row..=end_row {
-        //                             for c in start_col..=end_col {
-        //                                 let dest_name = Self::get_cell_name(r, c);
-        //                                 self.update_dependencies(&dest_name, "0");
-        //                                 let dest_index = ((r as isize + row_offset - 1)
-        //                                     * self.cols as isize
-        //                                     + (c as isize + col_offset - 1))
-        //                                     as usize;
-        //                                 if dest_index < self.cells.len() {
-        //                                     if let Some(dest_cell) = self
-        //                                         .cells
-        //                                         .get_mut(dest_index)
-        //                                         .and_then(|opt| opt.as_mut())
-        //                                     {
-        //                                         self.undo_stack.push((
-        //                                             dest_cell.formula.clone(),
-        //                                             dest_cell.row,
-        //                                             dest_cell.col,
-        //                                             dest_cell.value,
-        //                                             dest_cell.error,
-        //                                         ));
-        //                                         dest_cell.formula = None; // Clear formula
-        //                                         dest_cell.value = src_val[cnter];
-        //                                         dest_cell.error = src_err[cnter]; // copy error state
-        //                                         cnter += 1;
-        //                                     }
-        //                                 }
-        //                             }
-        //                         }
-        //                     }
-        //                     *status_out = "ok".to_string();
-        //                     return;
-        //                 }
-        //             }
-        //         }
-        //     }
-        // }
+                if let (Some((start_row, start_col)), Some((end_row, end_col))) = (
+                    self.spreadsheet_parse_cell_name(start.trim()),
+                    self.spreadsheet_parse_cell_name(end.trim()),
+                ) {
+                    if start_row <= end_row && start_col <= end_col {
+                        if matches!(func.to_uppercase().as_str(), "COPY") {
+                            // Parse the destination cell (cell_name)
+                            //spreadsheet parse cell name gives 1 based row and col
+                            if let Some((dest_row, dest_col)) =
+                                self.spreadsheet_parse_cell_name(cell_name)
+                            {
+                                // Calculate offsets
+                                let row_offset = dest_row as isize - start_row as isize;
+                                let col_offset = dest_col as isize - start_col as isize;
+                                // firstly iterate through all src_cells nd put them in some vector
+                                // then iterate through all dest cells nd put value from vectors in dest cells
+                                // can't be done in single iteration ; src and dest cells can be overlapping
+                                let mut src_val: Vec<i32> = Vec::new();
+                                let mut src_err: Vec<bool> = Vec::new();
+                                for r in start_row..=end_row {
+                                    for c in start_col..=end_col {
+                                        let src_index = ((r - 1) * self.cols + (c - 1)) as usize;
+                                        if let Some(src_cell) =
+                                            self.cells.get(src_index).and_then(|opt| opt.as_ref())
+                                        {
+                                            src_val.push(src_cell.value);
+                                            src_err.push(src_cell.error);
+                                        }
+                                    }
+                                }
+                                // now iterate through all dest cells and put value from src_val in dest cells
+                                let mut cnter = 0;
+                                for r in start_row..=end_row {
+                                    for c in start_col..=end_col {
+                                        let dest_name = Self::get_cell_name(r, c);
+                                        self.update_dependencies(&dest_name, "0");
+                                        let dest_index = ((r as isize + row_offset - 1)
+                                            * self.cols as isize
+                                            + (c as isize + col_offset - 1))
+                                            as usize;
+                                        if dest_index < self.cells.len() {
+                                            if let Some(dest_cell) = self
+                                                .cells
+                                                .get_mut(dest_index)
+                                                .and_then(|opt| opt.as_mut())
+                                            {
+                                                self.undo_stack.push((
+                                                    dest_cell.formula.clone(),
+                                                    dest_cell.row,
+                                                    dest_cell.col,
+                                                    dest_cell.value,
+                                                    dest_cell.error,
+                                                ));
+                                                dest_cell.formula = None; // Clear formula
+                                                dest_cell.value = src_val[cnter];
+                                                dest_cell.error = src_err[cnter]; // copy error state
+                                                cnter += 1;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            *status_out = "ok".to_string();
+                            return;
+                        }
+                    }
+                }
+            }
+        }
 
         // Go ahead if it's not COPY form
-
+        // new
+        // println!("starting find_depends");
+        // // get the starting time
+        // let start_time = Instant::now();
+        // new
         // Find dependencies
         let (r1, r2, c1, c2, range_bool) = match self.find_depends(formula) {
             Ok(deps) => deps,
@@ -992,14 +1056,31 @@ impl Spreadsheet {
                 return;
             }
         };
-
+        // new
+        // println!("find_depends took {:?}", start_time.elapsed().as_secs_f64());
+        // new
         // Check for cycles
+
+        // new
+        let start_time = Instant::now();
+        // new
         if self.first_step_find_cycle(cell_name, r1, r2, c1, c2, range_bool) {
             *status_out = "Cycle Detected".to_string();
             return;
         }
 
+        // new
+        // println!(
+        //     "cycle detection took {:?}",
+        //     start_time.elapsed().as_secs_f64()
+        // );
+        // new
+
         // Update dependencies
+
+        // new
+        let start_time = Instant::now();
+        // new
         self.update_dependencies(cell_name, formula);
 
         let cell = match self.cells.get_mut(index).and_then(|opt| opt.as_mut()) {
@@ -1009,6 +1090,12 @@ impl Spreadsheet {
                 return;
             }
         };
+        // new
+        // println!(
+        //     "update dependencies took {:?}",
+        //     start_time.elapsed().as_secs_f64()
+        // );
+        // new
         // Update the cell's formula
         // println!(
         //     "pushing cell {}{} with formula: {:?}",
@@ -1033,7 +1120,14 @@ impl Spreadsheet {
             }
         };
         // Perform topological sort
+
+        // new
+        let start_time = Instant::now();
+        // new
         let sorted_cells = self.topo_sort(cell);
+        // new
+        // println!("topo sort took {:?}", start_time.elapsed().as_secs_f64());
+        // new
 
         // println!("Updating cells in topological order:");
         // for (row, col) in &sorted_cells {
@@ -1041,6 +1135,10 @@ impl Spreadsheet {
         // }
 
         // Evaluate expressions for all cells in topological order
+
+        // new
+        let start_time = Instant::now();
+        // new
         for (row, col) in sorted_cells {
             // Calculate index for the current cell in topological order
             let sorted_index = ((row as i32 - 1) * self.cols + (col as i32 - 1)) as usize;
@@ -1067,6 +1165,9 @@ impl Spreadsheet {
                 sorted_cell.error = error_cell;
             }
         }
+        // new
+        // println!("evaluation took {:?}", start_time.elapsed().as_secs_f64());
+        // new
 
         *status_out = "ok".to_string();
     }
