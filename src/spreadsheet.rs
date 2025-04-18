@@ -15,6 +15,30 @@ pub struct Spreadsheet {
     // pub cells: Vec<Vec<Option<Cell>>>,
 }
 
+#[derive(Debug)]
+
+pub enum ParsedRHS {
+    Function {
+        name: String,
+        args: (Operand,Operand), // now each arg can be a cell (row, col) or number
+    },
+    Sleep(Operand),
+    Arithmetic {
+        lhs: Operand,
+        operator: String,
+        rhs: Operand,
+    },
+    SingleValue(Operand),
+    None,
+}
+
+#[derive(Debug)]
+pub enum Operand {
+    Number(i32),
+    Cell(usize, usize), // (row, col)
+}
+
+
 impl Spreadsheet {
     pub fn spreadsheet_create(rows: i32, cols: i32) -> Option<Box<Self>> {
         let mut sheet = Box::new(Spreadsheet {
@@ -1259,19 +1283,28 @@ impl Spreadsheet {
         }
     }
 
-    pub fn is_valid_command(&self, cell_name: &str, formula: &str) -> bool {
+    pub fn is_valid_command(&self, cell_name: &str, formula: &str) -> (bool, u32,u32,ParsedRHS) {
+        // initialise the return value
+        let mut ret = (false,0,0,ParsedRHS::None);
         if cell_name.is_empty() || formula.is_empty() {
-            return false;
+            return ret;
         }
 
         // Check if valid cell name
-        if self.spreadsheet_parse_cell_name(cell_name).is_none() {
-            return false;
+        // also update the ret val accordingly
+        if let Some((row, col)) = self.spreadsheet_parse_cell_name(cell_name) {
+            ret.1 = row as u32;
+            ret.2 = col as u32;
+        } else {
+            return ret;
         }
+        // if self.spreadsheet_parse_cell_name(cell_name).is_none() {
+        //     return false;
+        // }
 
         // Check if formula is empty (already checked above, redundant)
         if formula.is_empty() {
-            return false;
+            return ret;
         }
 
         // Check for function call pattern: FUNC(...)
@@ -1282,17 +1315,22 @@ impl Spreadsheet {
 
             if func.eq_ignore_ascii_case("SLEEP") {
                 if args.is_empty() {
-                    return false;
+                    return ret;
                 }
                 // Check if args is a valid integer
-                if args.parse::<i32>().is_ok() {
-                    return true;
+                // also extract that integer
+                if let Ok(value) = args.parse::<i32>() {
+                    ret.0 = true;
+                    ret.3 = ParsedRHS::Sleep(Operand::Number(value));
+                    return ret;
                 }
                 // Check if args is a valid cell reference
-                if self.spreadsheet_parse_cell_name(args).is_some() {
-                    return true;
+                if let Some((row, col)) = self.spreadsheet_parse_cell_name(args) {
+                    ret.0 = true;
+                    ret.3 = ParsedRHS::Sleep(Operand::Cell(row as usize, col as usize));
+                    return ret;
                 }
-                return false;
+                return ret;
             } else {
                 // Check for range functions like MIN, MAX, etc.
                 if let Some(colon_pos) = args.find(':') {
@@ -1308,15 +1346,17 @@ impl Spreadsheet {
                                 func.to_uppercase().as_str(),
                                 "MIN" | "MAX" | "SUM" | "AVG" | "STDEV" | "CUT" | "COPY"
                             ) {
-                                return true;
+                                ret.0 = true;
+                                ret.3 = ParsedRHS::Function { name: func.to_string(), args: (Operand::Cell(start_row as usize,start_col as usize),Operand::Cell(end_row as usize, end_col as usize)) };
+                                return ret;
                             }
 
                             if matches!(func.to_uppercase().as_str(), "CUT" | "COPY") {
                                 // Parse the destination cell (cell_name)
                                 //spreadsheet parse cell name gives 1 based row and col
-                                if let Some((dest_row, dest_col)) =
-                                    self.spreadsheet_parse_cell_name(cell_name)
-                                {
+
+                                    let dest_row = ret.1;
+                                    let dest_col = ret.2;
                                     // Calculate offsets
                                     let row_offset = dest_row as isize - start_row as isize;
                                     let col_offset = dest_col as isize - start_col as isize;
@@ -1325,36 +1365,60 @@ impl Spreadsheet {
                                     let final_row = end_row as isize + row_offset;
                                     let final_col = end_col as isize + col_offset;
 
-                                    return final_row > 0
+                                    if final_row > 0
                                         && final_row <= self.rows as isize
                                         && final_col > 0
-                                        && final_col <= self.cols as isize;
-                                }
-                                return false;
+                                        && final_col <= self.cols as isize {
+                                            ret.0 = true;
+                                            ret.3 = ParsedRHS::Function { name: func.to_string(), args: (Operand::Cell(start_row as usize,start_col as usize),Operand::Cell(final_row as usize, final_col as usize)) };
+                                            return ret;
+
+                                        }
+                                    else {
+                                        // Invalid destination cell
+                                        ret.0 = false;
+                                        return ret;
+                                    }
+                                
+                                return ret;
                             }
                         }
                     }
                 }
-                return false;
+                return ret;
             }
         }
 
         // Check if the formula is a single cell reference (e.g., A1)
-        if self.spreadsheet_parse_cell_name(formula).is_some() {
-            return true;
+        if let Some((row, col)) = self.spreadsheet_parse_cell_name(formula) {
+            ret.0 = true;
+            ret.3 = ParsedRHS::SingleValue(Operand::Cell(row as usize, col as usize));
+            return ret;
         }
 
         // Check for only some integer with optional sign on the rhs
-        if formula.parse::<i32>().is_ok() {
-            return true;
+        if let Ok(value) = formula.parse::<i32>() {
+            ret.0 = true;
+            ret.3 = ParsedRHS::SingleValue(Operand::Number(value));
+            return ret;
         }
         // Check for arithmetic expressions with cell references or numbers
-        self.is_valid_arithmetic_expression(formula)
+        let (b,x) = self.is_valid_arithmetic_expression(formula);
+        if b {
+            ret.0 = true;
+            ret.3 = x;
+            return ret;
+        }
+        else {
+            ret.0 = false;
+            return ret;
+        }
     }
-    fn is_valid_arithmetic_expression(&self, expr: &str) -> bool {
-        // Remove all spaces for easier parsing
-        let expr = expr.replace(" ", "");
-
+    fn is_valid_arithmetic_expression(&self, expr: &str) -> (bool,ParsedRHS) {
+        // initialise the return value
+        let mut ret = (false,ParsedRHS::None);
+        // let mut oprnd1 = Operand::Number(0);
+        // let mut oprnd2 = Operand::Number(0);
         // Use regex to separate expression into components
         let expr_regex = regex::Regex::new(
             r"^(([+-]?[0-9]+)|([A-Za-z]+[0-9]+))([+\-*/])(([+-]?[0-9]+)|([A-Za-z]+[0-9]+))$",
@@ -1367,26 +1431,61 @@ impl Spreadsheet {
             let second_operand = captures.get(5).unwrap().as_str();
 
             // Verify first operand
-            let is_first_valid = if first_operand.chars().next().unwrap().is_ascii_alphabetic() {
+            let oprnd1 = if first_operand.chars().next().unwrap().is_ascii_alphabetic() {
                 // It's a cell reference
-                self.spreadsheet_parse_cell_name(first_operand).is_some()
-            } else {
+                // self.spreadsheet_parse_cell_name(first_operand).is_some()
+                if let Some((row, col)) = self.spreadsheet_parse_cell_name(first_operand) {
+                    Operand::Cell(row as usize, col as usize)
+                }
+                else {
                 // It's a number with optional sign
-                first_operand.parse::<i32>().is_ok()
-            };
+                if let Ok(value) = first_operand.parse::<i32>() {
+                    Operand::Number(value)
+                } else {
+                    return (false,ParsedRHS::None);
+                }
+            }
+        }
+        else {
+            return (false,ParsedRHS::None);
+        };
 
             // Verify second operand
-            let is_second_valid = if second_operand.chars().next().unwrap().is_ascii_alphabetic() {
+            let oprnd2 = if second_operand.chars().next().unwrap().is_ascii_alphabetic() {
                 // It's a cell reference
-                self.spreadsheet_parse_cell_name(second_operand).is_some()
-            } else {
+                if let Some((row, col)) = self.spreadsheet_parse_cell_name(second_operand) {
+                    Operand::Cell(row as usize, col as usize)
+                }
+                
+            else {
                 // It's a number with optional sign
-                second_operand.parse::<i32>().is_ok()
-            };
-
-            return is_first_valid && is_second_valid;
+                if let Ok(value) = second_operand.parse::<i32>() {
+                    Operand::Number(value)
+                } else {
+                    return (false,ParsedRHS::None);
+                }
+            }
         }
+        else {
+            return (false,ParsedRHS::None);
+        };
+            // Check if the operator is valid
+            if operator == "+" || operator == "-" || operator == "*" || operator == "/" {
+                ret.0 = true;
+                ret.1 = ParsedRHS::Arithmetic {
+                    lhs: oprnd1,
+                    operator: operator.to_string(),
+                    rhs: oprnd2,
+                };
+            } else {
+                return (false,ParsedRHS::None);
+            }
 
-        false
+        ret
+    }
+    else {
+        ret
     }
 }
+}
+
