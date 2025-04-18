@@ -6,39 +6,45 @@ edition = "2024"
 [profile.release]
 debug = true
 
+# Core dependencies needed by all parts of the application
 [dependencies]
 regex = "1.10.2"
 bincode = "1.3"
 flate2 = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tokio = { version = "1.28", features = ["full"] }
-env_logger = "0.10"
 plotters = "0.3"
-# Web framework and related
-axum = { version = "0.7", features = ["json", "multipart"] }
-tower-http = { version = "0.5", features = ["fs", "cors", "trace"] }
 image = "0.24" 
-tempfile = "3.6.0" 
+tempfile = "3.6.0"
+getrandom = { version = "0.2", features = ["js"] }
 
-# Keep existing dependencies for compatibility
-actix-web = "4.3"
-actix-files = "0.6"
-handlebars = { version = "4.3", features = ["dir_source"] }
-web-sys = { version = "0.3", features = [
-    "Document", "Element", "HtmlElement", "Node", "Window", 
-    "HtmlInputElement", "HtmlSelectElement", "EventTarget",
-    "HtmlButtonElement", "Event", "FileReader", "Blob", "File",
-    "HtmlTableElement", "HtmlTableRowElement", "HtmlTableCellElement",
-    "MouseEvent", "KeyboardEvent", "CssStyleDeclaration"
-]}
-wasm-bindgen = "0.2"
-js-sys = "0.3"
+# Web dependencies - only used when the "web" feature is enabled
+tokio = { version = "1.28", features = ["full"], optional = true }
+axum = { version = "0.7", features = ["json", "multipart"], optional = true }
+tower-http = { version = "0.5", features = ["fs", "cors", "trace"], optional = true }
+env_logger = { version = "0.10", optional = true }
+actix-web = { version = "4.3", optional = true }
+actix-files = { version = "0.6", optional = true }
+handlebars = { version = "4.3", features = ["dir_source"], optional = true }
+wasm-bindgen = { version = "0.2", optional = true }
+js-sys = { version = "0.3", optional = true }
 
-[dependencies.getrandom]
-version = "0.2"
-features = ["js"]
+[features]
+default = []
+web = ["tokio", "axum", "tower-http", "env_logger", "actix-web", "actix-files", "handlebars", "wasm-bindgen", "js-sys"]
 
+# CLI spreadsheet binary (no web dependencies)
+[[bin]]
+name = "spreadsheet"
+path = "src/bin/cli.rs"
+
+# Web server binary (requires web dependencies)
+[[bin]]
+name = "website" 
+path = "src/bin/web.rs"
+required-features = ["web"]
+
+# Test binaries
 [[bin]]
 name = "cell_test"
 path = "src/bin/cell_test.rs"
