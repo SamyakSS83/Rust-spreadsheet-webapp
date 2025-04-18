@@ -7,7 +7,16 @@ how to run:
 
 ```bash
 cargo build
-./target/debug/cop
+./target/debug/spreadsheet
+```
+
+```bash
+cargo install flamegraph
+
+sudo sh -c 'echo 0 > /proc/sys/kernel/perf_event_paranoid'
+
+cargo flamegraph --bin spreadsheet -- 999 18278 < ../cop290_autograder/hidden_tc2/chain/large_dep_chain.cmds
+
 ```
 
 To Do:
