@@ -476,6 +476,7 @@ impl Spreadsheet {
                 // Check all dependent cells using our helper method
                 let dependent_names = self.get_dependent_names(my_node);
                 // println!("Dependent names: {:?}", dependent_names);
+                // println!("Visited: {:?}", visited);
                 for dependent_name in &dependent_names {
                     if !visited.contains(dependent_name) {
                         let r = dependent_name.0;
@@ -702,68 +703,138 @@ impl Spreadsheet {
         0
     }
 
-    pub fn topo_sort(&self, starting: &Box<Cell>) -> Vec<(u32, u32)> {
-        // Create an empty result vector for the sorted nodes
-        let mut sorted_nodes = Vec::new();
+    // pub fn topo_sort(&self, starting: &Box<Cell>) -> Vec<(u32, u32)> {
+    //     // Create an empty result vector for the sorted nodes
+    //     let mut sorted_nodes = Vec::new();
 
-        // Track visited cells using a BTreeSet
-        let mut visited = BTreeSet::new();
+    //     // Track visited cells using a BTreeSet
+    //     let mut visited = BTreeSet::new();
 
-        // Track temporarily marked nodes (for cycle detection)
-        let mut temp_marked = BTreeSet::new();
+    //     // Track temporarily marked nodes (for cycle detection)
+    //     let mut temp_marked = BTreeSet::new();
 
-        // Use a stack for non-recursive DFS implementation to avoid stack overflow
-        let mut stack = vec![(starting, false)]; // (node, processed_children)
+    //     // Use a stack for non-recursive DFS implementation to avoid stack overflow
+    //     let mut stack = vec![(starting, false)]; // (node, processed_children)
 
-        while let Some((node, processed)) = stack.pop() {
-            let key = (node.row, node.col);
+    //     while let Some((node, processed)) = stack.pop() {
+    //         let key = (node.row, node.col);
 
-            // If already in final result, we're done with this node
-            if visited.contains(&key) {
+    //         // If already in final result, we're done with this node
+    //         if visited.contains(&key) {
+    //             continue;
+    //         }
+
+    //         // If we've processed all children, add this node to result
+    //         if processed {
+    //             visited.insert(key);
+    //             sorted_nodes.push((node.row as u32, node.col as u32));
+    //             temp_marked.remove(&key);
+    //             continue;
+    //         }
+
+    //         // Check for cycles (node is currently being processed)
+    //         if temp_marked.contains(&key) {
+    //             // Skip this node - cycle detected but already handled
+    //             continue;
+    //         }
+
+    //         // Mark temporarily to detect cycles
+    //         temp_marked.insert(key);
+
+    //         // Add node back to stack, marked as processed
+    //         stack.push((node, true));
+
+    //         // Get all dependent cells efficiently
+    //         let dependent_keys = self.get_dependent_names(node);
+
+    //         // Process all dependents - add them to stack
+    //         for dep_key in dependent_keys.iter().rev() {
+    //             // Reverse to maintain correct order
+    //             let (r, c) = *dep_key;
+    //             let dep_index = ((r - 1) * self.cols as u16 + (c - 1)) as usize;
+
+    //             if dep_index < self.cells.len() {
+    //                 if let Some(dep_cell) = self.cells.get(dep_index).and_then(|opt| opt.as_ref()) {
+    //                     if !visited.contains(&(r, c)) {
+    //                         stack.push((dep_cell, false));
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     }
+    //     // return the sorted nodes in reverse order
+    //     sorted_nodes.reverse();
+    //     sorted_nodes
+
+    // }
+
+
+    pub fn topo_sort(&self, starting: &Box<Cell>) -> Box<Vec<(u16, u16)>> {
+        // Create an empty result vector (equivalent to Node_l *head = NULL)
+        let mut sorted_nodes = Box::new(Vec::new());
+
+        // Create a stack for DFS traversal (equivalent to Node *st_top)
+        let mut stack = Box::new(Vec::new());
+        stack.push(starting.clone());
+
+        // Track visited cells using a BTreeSet (equivalent to OrderedSet *visited)
+        let mut visited = Box::new(BTreeSet::new());
+
+        // Working stack to simulate recursive DFS with explicit stack
+        let mut work_stack = Box::new(Vec::new());
+        work_stack.push(Box::new((starting.row as u16, starting.col as u16)));
+
+        while let Some(current) = work_stack.pop() {
+            let current = *current;
+            println!("Current cell: {:?}", current);
+            // Generate cell name for the current node
+            // let cell_name = Self::get_cell_name(current.row, current.col);
+
+            // If we've already processed this cell, skip it
+            if visited.contains(&current) {
                 continue;
             }
 
-            // If we've processed all children, add this node to result
-            if processed {
-                visited.insert(key);
-                sorted_nodes.push((node.row as u32, node.col as u32));
-                temp_marked.remove(&key);
-                continue;
-            }
+            // Get dependents of current cell
+            let index = ((current.0 - 1) * self.cols as u16 + (current.1 - 1)) as usize;
+            if let Some(cell) = self.cells.get(index).and_then(|opt| opt.as_ref()){
 
-            // Check for cycles (node is currently being processed)
-            if temp_marked.contains(&key) {
-                // Skip this node - cycle detected but already handled
-                continue;
-            }
+            
+            let dependent_keys = self.get_dependent_names(cell);
+            let mut all_dependents_visited = true;
 
-            // Mark temporarily to detect cycles
-            temp_marked.insert(key);
-
-            // Add node back to stack, marked as processed
-            stack.push((node, true));
-
-            // Get all dependent cells efficiently
-            let dependent_keys = self.get_dependent_names(node);
-
-            // Process all dependents - add them to stack
-            for dep_key in dependent_keys.iter().rev() {
-                // Reverse to maintain correct order
-                let (r, c) = *dep_key;
-                let dep_index = ((r - 1) * self.cols as u16 + (c - 1)) as usize;
-
-                if dep_index < self.cells.len() {
-                    if let Some(dep_cell) = self.cells.get(dep_index).and_then(|opt| opt.as_ref()) {
-                        if !visited.contains(&(r, c)) {
-                            stack.push((dep_cell, false));
-                        }
-                    }
+            // Check if all dependents are visited
+            for dep_key in &dependent_keys {
+                if !visited.contains(dep_key) {
+                    // If we have an unvisited dependent, we need to process it first
+                    // if let Some((r, c)) = self.spreadsheet_parse_cell_name(dep_key) {
+                        let (r, c) = *dep_key;
+                        let dep_index = ((r - 1) * self.cols as u16 + (c - 1)) as usize;
+                        
+                            // Push current cell back to work stack
+                            work_stack.push(Box::new(current));
+                            // Push dependent to work stack to process first
+                            work_stack.push(Box::new((r,c)));
+                            all_dependents_visited = false;
+                            break;
+                        
+                    
                 }
             }
+
+            // If all dependents are visited, we can add this cell to sorted result
+            if all_dependents_visited {
+                visited.insert(current);
+                sorted_nodes.push(current);
+            }
+        }
         }
 
+        // Reverse result to match original C implementation order
+        sorted_nodes.reverse();
         sorted_nodes
     }
+
 
     pub fn spreadsheet_set_cell_value(
         &mut self,
@@ -954,6 +1025,9 @@ impl Spreadsheet {
         // new
         self.update_dependencies(row, col, r1, c1, r2, c2, is_range);
 
+        println!("cell dependency of A1 are : {:?}", self.cells[0].as_ref().unwrap().dependents);
+        println!("cell dependency of current cell are : {:?}", self.cells[index].as_ref().unwrap().dependents);
+
         let cell = match self.cells.get_mut(index).and_then(|opt| opt.as_mut()) {
             Some(cell) => cell,
             None => {
@@ -1000,6 +1074,7 @@ impl Spreadsheet {
         let start_time = Instant::now();
         // new
         let sorted_cells = self.topo_sort(cell);
+        println!("sorted cells {:?}", sorted_cells);
         // new
         // println!("topo sort took {:?}", start_time.elapsed().as_secs_f64());
         // new
@@ -1014,9 +1089,9 @@ impl Spreadsheet {
         // new
         let start_time = Instant::now();
         // new
-        for (row, col) in sorted_cells {
+        for (row, col) in sorted_cells.iter() {
             // Calculate index for the current cell in topological order
-            let sorted_index = ((row as i32 - 1) * self.cols + (col as i32 - 1)) as usize;
+            let sorted_index = ((*row as i32 - 1) * self.cols + (*col as i32 - 1)) as usize;
 
             // Get formula from the sorted cell
             // let formula = match self.cells.get(sorted_index).and_then(|opt| opt.as_ref()) {
@@ -1034,7 +1109,7 @@ impl Spreadsheet {
 
             // Evaluate expression
             let (value, error_cell) =
-                self.spreadsheet_evaluate_expression(formula, row as usize, col as usize);
+                self.spreadsheet_evaluate_expression(formula, *row as usize, *col as usize);
 
             // Update the sorted cell's value
             if let Some(sorted_cell) = self
