@@ -693,7 +693,8 @@ impl Spreadsheet {
     // Entry point for cycle detection - checks if a given cell could create a cycle
     pub fn first_step_find_cycle(
         &self,
-        cell_name: &str,
+        r_: usize,
+        c_: usize,
         r1: i32,
         r2: i32,
         c1: i32,
@@ -701,13 +702,13 @@ impl Spreadsheet {
         range_bool: bool,
     ) -> bool {
         // Parse the cell name to get row and column indices
-        let (r_, c_) = match self.spreadsheet_parse_cell_name(cell_name) {
-            Some(coords) => coords,
-            None => return false, // Invalid cell name
-        };
+        // let (r_, c_) = match self.spreadsheet_parse_cell_name(cell_name) {
+        //     Some(coords) => coords,
+        //     None => return false, // Invalid cell name
+        // };
 
         // Get the index of the cell in the flattened vector
-        let index = ((r_ - 1) * self.cols + (c_ - 1)) as usize;
+        let index = (r_ - 1) * self.cols as usize + (c_ - 1) ;
 
         // Get the cell from the spreadsheet
         let start_node = match &self.cells[index] {
@@ -726,19 +727,17 @@ impl Spreadsheet {
         self.rec_find_cycle_using_stack(r1, r2, c1, c2, range_bool, &mut visited, &mut stack)
     }
 
-    pub fn remove_old_dependents(&mut self, cell_name: &str) {
+    pub fn remove_old_dependents(&mut self, r : usize, c: usize) {
         // eprintln!("Entered remove_old_dependents for cell: {cell_name}");
         // Parse the provided cell name to locate the current cell.
-        let formula_and_deps = if let Some((r, c)) = self.spreadsheet_parse_cell_name(cell_name) {
-            let index = ((r - 1) * self.cols + (c - 1)) as usize;
+        let formula_and_deps =  {
+            let index = (r - 1) * self.cols as usize + (c - 1);
             if let Some(curr_cell) = self.cells.get(index).and_then(|opt| opt.as_ref()) {
                 // If there's no formula, nothing to update.
                 curr_cell.formula.clone()
             } else {
                 None
             }
-        } else {
-            None
         };
 
         // eprintln!("Formula and deps: {:?}", formula_and_deps);
@@ -775,7 +774,7 @@ impl Spreadsheet {
                                             .get_mut(dep_index)
                                             .and_then(|opt| opt.as_mut())
                                         {
-                                            crate::cell::cell_dep_remove(dep_cell, cell_name);
+                                            crate::cell::cell_dep_remove(dep_cell, r,c);
                                         }
                                     }
                                 }
@@ -818,38 +817,22 @@ impl Spreadsheet {
         }
     }
 
-    pub fn update_dependencies(&mut self, cell_name: &str, formula: &str) -> i32 {
+    pub fn update_dependencies(&mut self, r:usize,c:usize, start_row:i32,start_col:i32,end_row:i32,end_col:i32,is_range:bool) -> i32 {
         // eprintln!("Entered update_dependencies for cell: {cell_name} with formula: {formula}");
         // First, parse the cell—this mirrors C obtaining the current cell coordinates.
-        let (r, c) = self.spreadsheet_parse_cell_name(cell_name).unwrap();
+        // let (r, c) = self.spreadsheet_parse_cell_name(cell_name).unwrap();
 
         // Remove old dependencies
-        self.remove_old_dependents(cell_name);
+        self.remove_old_dependents(r,c);
         // Add the new formula to the cell
-        let index = ((r - 1) * self.cols + (c - 1)) as usize;
-        if let Some(cell) = self.cells.get_mut(index).and_then(|opt| opt.as_mut()) {
-            cell.formula = Some(formula.to_string());
-        }
+        let index = (r - 1) * self.cols as usize + (c - 1);
+        // if let Some(cell) = self.cells.get_mut(index).and_then(|opt| opt.as_mut()) {
+        //     cell.formula = Some(formula.to_string());
+        // }
         // Now, process the formula to update dependencies.
-
-        let ranges = ["MIN", "MAX", "AVG", "SUM", "STDEV"];
-        let mut processed_range = false;
-        // If the formula starts with one of the range functions...
-        for range in &ranges {
-            if formula.starts_with(range) {
-                if let Some(open_paren_idx) = formula.find('(') {
-                    let rest = &formula[open_paren_idx + 1..];
-                    if let Some(close_paren_idx) = rest.find(')') {
-                        let only_range = &rest[..close_paren_idx];
-                        // Expect a format like "A1:B3"
-                        let parts: Vec<&str> = only_range.split(':').collect();
-                        if parts.len() == 2 {
-                            if let (Some((start_row, start_col)), Some((end_row, end_col))) = (
-                                self.spreadsheet_parse_cell_name(parts[0].trim()),
-                                self.spreadsheet_parse_cell_name(parts[1].trim()),
-                            ) {
-                                // Convert to 0-based indices for rows (columns remain 1-based in our indexing)
-                                let r1 = start_row - 1;
+        
+        if is_range {
+            let r1 = start_row - 1;
                                 let r2 = end_row - 1;
 
                                 // Check validity as in the C code:
@@ -866,36 +849,26 @@ impl Spreadsheet {
                                             .get_mut(dep_index)
                                             .and_then(|opt| opt.as_mut())
                                         {
-                                            crate::cell::cell_dep_insert(dep_cell, cell_name);
+                                            crate::cell::cell_dep_insert(dep_cell, r,c);
                                         }
                                     }
                                 }
-                                processed_range = true;
-                            }
-                        }
-                    }
-                }
-                break;
-            }
         }
-        // Non-range formula: add dependency only for the two cell references found.
-        if !processed_range {
-            if let Ok((dep_r1, dep_r2, dep_c1, dep_c2, _)) = self.find_depends(formula) {
-                if dep_r1 > 0 {
-                    let dep_index = ((dep_r1 - 1) * self.cols + (dep_c1 - 1)) as usize;
-                    if let Some(dep_cell) =
-                        self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
-                    {
-                        crate::cell::cell_dep_insert(dep_cell, cell_name);
-                    }
+        else {
+            if start_row > 0 {
+                let dep_index = ((start_row - 1) * self.cols + (start_col - 1)) as usize;
+                if let Some(dep_cell) =
+                    self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
+                {
+                    crate::cell::cell_dep_insert(dep_cell, r,c);
                 }
-                if dep_r2 > 0 {
-                    let dep_index = ((dep_r2 - 1) * self.cols + (dep_c2 - 1)) as usize;
-                    if let Some(dep_cell) =
-                        self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
-                    {
-                        crate::cell::cell_dep_insert(dep_cell, cell_name);
-                    }
+            }
+            if end_row > 0 {
+                let dep_index = ((end_row - 1) * self.cols + (end_col - 1)) as usize;
+                if let Some(dep_cell) =
+                    self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
+                {
+                    crate::cell::cell_dep_insert(dep_cell, r,c);
                 }
             }
         }
@@ -964,107 +937,108 @@ impl Spreadsheet {
 
     pub fn spreadsheet_set_cell_value(
         &mut self,
-        cell_name: &str,
-        formula: &str,
+        row: usize,
+        col:usize,
+        rhs : ParsedRHS,
         status_out: &mut String,
     ) {
-        if cell_name.is_empty() || formula.is_empty() {
-            *status_out = "invalid args".to_string();
-            return;
-        }
+        // if cell_name.is_empty() || formula.is_empty() {
+        //     *status_out = "invalid args".to_string();
+        //     return;
+        // }
 
         // Parse cell name to get row and column
-        let (r_, c_) = match self.spreadsheet_parse_cell_name(cell_name) {
-            Some(coords) => coords,
-            None => {
-                *status_out = "invalid args".to_string();
-                return;
-            }
-        };
+        // let (r_, c_) = match self.spreadsheet_parse_cell_name(cell_name) {
+        //     Some(coords) => coords,
+        //     None => {
+        //         *status_out = "invalid args".to_string();
+        //         return;
+        //     }
+        // };
 
         // Get the cell
-        let index = ((r_ - 1) * self.cols + (c_ - 1)) as usize;
+        let index = (row - 1) * self.cols as usize + (col - 1);
 
         // Firstly, check if the formula is copy
-        let func_regex = regex::Regex::new(r"^([A-Za-z]+)\((.*)\)$").unwrap();
-        if let Some(captures) = func_regex.captures(formula) {
-            let func = captures.get(1).unwrap().as_str();
-            let args = captures.get(2).unwrap().as_str();
+        // let func_regex = regex::Regex::new(r"^([A-Za-z]+)\((.*)\)$").unwrap();
+        // if let Some(captures) = func_regex.captures(formula) {
+        //     let func = captures.get(1).unwrap().as_str();
+        //     let args = captures.get(2).unwrap().as_str();
 
-            // Check for range functions like MIN, MAX, etc.
-            if let Some(colon_pos) = args.find(':') {
-                let (start, end) = args.split_at(colon_pos);
-                let end = &end[1..]; // Skip the colon
+        //     // Check for range functions like MIN, MAX, etc.
+        //     if let Some(colon_pos) = args.find(':') {
+        //         let (start, end) = args.split_at(colon_pos);
+        //         let end = &end[1..]; // Skip the colon
 
-                if let (Some((start_row, start_col)), Some((end_row, end_col))) = (
-                    self.spreadsheet_parse_cell_name(start.trim()),
-                    self.spreadsheet_parse_cell_name(end.trim()),
-                ) {
-                    if start_row <= end_row && start_col <= end_col {
-                        if matches!(func.to_uppercase().as_str(), "COPY") {
-                            // Parse the destination cell (cell_name)
-                            //spreadsheet parse cell name gives 1 based row and col
-                            if let Some((dest_row, dest_col)) =
-                                self.spreadsheet_parse_cell_name(cell_name)
-                            {
-                                // Calculate offsets
-                                let row_offset = dest_row as isize - start_row as isize;
-                                let col_offset = dest_col as isize - start_col as isize;
-                                // firstly iterate through all src_cells nd put them in some vector
-                                // then iterate through all dest cells nd put value from vectors in dest cells
-                                // can't be done in single iteration ; src and dest cells can be overlapping
-                                let mut src_val: Vec<i32> = Vec::new();
-                                let mut src_err: Vec<bool> = Vec::new();
-                                for r in start_row..=end_row {
-                                    for c in start_col..=end_col {
-                                        let src_index = ((r - 1) * self.cols + (c - 1)) as usize;
-                                        if let Some(src_cell) =
-                                            self.cells.get(src_index).and_then(|opt| opt.as_ref())
-                                        {
-                                            src_val.push(src_cell.value);
-                                            src_err.push(src_cell.error);
-                                        }
-                                    }
-                                }
-                                // now iterate through all dest cells and put value from src_val in dest cells
-                                let mut cnter = 0;
-                                for r in start_row..=end_row {
-                                    for c in start_col..=end_col {
-                                        let dest_name = Self::get_cell_name(r, c);
-                                        self.update_dependencies(&dest_name, "0");
-                                        let dest_index = ((r as isize + row_offset - 1)
-                                            * self.cols as isize
-                                            + (c as isize + col_offset - 1))
-                                            as usize;
-                                        if dest_index < self.cells.len() {
-                                            if let Some(dest_cell) = self
-                                                .cells
-                                                .get_mut(dest_index)
-                                                .and_then(|opt| opt.as_mut())
-                                            {
-                                                self.undo_stack.push((
-                                                    dest_cell.formula.clone(),
-                                                    dest_cell.row,
-                                                    dest_cell.col,
-                                                    dest_cell.value,
-                                                    dest_cell.error,
-                                                ));
-                                                dest_cell.formula = None; // Clear formula
-                                                dest_cell.value = src_val[cnter];
-                                                dest_cell.error = src_err[cnter]; // copy error state
-                                                cnter += 1;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            *status_out = "ok".to_string();
-                            return;
-                        }
-                    }
-                }
-            }
-        }
+        //         if let (Some((start_row, start_col)), Some((end_row, end_col))) = (
+        //             self.spreadsheet_parse_cell_name(start.trim()),
+        //             self.spreadsheet_parse_cell_name(end.trim()),
+        //         ) {
+        //             if start_row <= end_row && start_col <= end_col {
+        //                 if matches!(func.to_uppercase().as_str(), "COPY") {
+        //                     // Parse the destination cell (cell_name)
+        //                     //spreadsheet parse cell name gives 1 based row and col
+        //                     if let Some((dest_row, dest_col)) =
+        //                         self.spreadsheet_parse_cell_name(cell_name)
+        //                     {
+        //                         // Calculate offsets
+        //                         let row_offset = dest_row as isize - start_row as isize;
+        //                         let col_offset = dest_col as isize - start_col as isize;
+        //                         // firstly iterate through all src_cells nd put them in some vector
+        //                         // then iterate through all dest cells nd put value from vectors in dest cells
+        //                         // can't be done in single iteration ; src and dest cells can be overlapping
+        //                         let mut src_val: Vec<i32> = Vec::new();
+        //                         let mut src_err: Vec<bool> = Vec::new();
+        //                         for r in start_row..=end_row {
+        //                             for c in start_col..=end_col {
+        //                                 let src_index = ((r - 1) * self.cols + (c - 1)) as usize;
+        //                                 if let Some(src_cell) =
+        //                                     self.cells.get(src_index).and_then(|opt| opt.as_ref())
+        //                                 {
+        //                                     src_val.push(src_cell.value);
+        //                                     src_err.push(src_cell.error);
+        //                                 }
+        //                             }
+        //                         }
+        //                         // now iterate through all dest cells and put value from src_val in dest cells
+        //                         let mut cnter = 0;
+        //                         for r in start_row..=end_row {
+        //                             for c in start_col..=end_col {
+        //                                 let dest_name = Self::get_cell_name(r, c);
+        //                                 self.update_dependencies(&dest_name, "0");
+        //                                 let dest_index = ((r as isize + row_offset - 1)
+        //                                     * self.cols as isize
+        //                                     + (c as isize + col_offset - 1))
+        //                                     as usize;
+        //                                 if dest_index < self.cells.len() {
+        //                                     if let Some(dest_cell) = self
+        //                                         .cells
+        //                                         .get_mut(dest_index)
+        //                                         .and_then(|opt| opt.as_mut())
+        //                                     {
+        //                                         self.undo_stack.push((
+        //                                             dest_cell.formula.clone(),
+        //                                             dest_cell.row,
+        //                                             dest_cell.col,
+        //                                             dest_cell.value,
+        //                                             dest_cell.error,
+        //                                         ));
+        //                                         dest_cell.formula = None; // Clear formula
+        //                                         dest_cell.value = src_val[cnter];
+        //                                         dest_cell.error = src_err[cnter]; // copy error state
+        //                                         cnter += 1;
+        //                                     }
+        //                                 }
+        //                             }
+        //                         }
+        //                     }
+        //                     *status_out = "ok".to_string();
+        //                     return;
+        //                 }
+        //             }
+        //         }
+        //     }
+        // }
 
         // Go ahead if it's not COPY form
         // new
@@ -1073,13 +1047,55 @@ impl Spreadsheet {
         // let start_time = Instant::now();
         // new
         // Find dependencies
-        let (r1, r2, c1, c2, range_bool) = match self.find_depends(formula) {
-            Ok(deps) => deps,
-            Err(_) => {
-                *status_out = "invalid command".to_string();
-                return;
+        let mut r1 = -1;
+        let mut r2 = -1;
+        let mut c1 = -1;
+        let mut c2 = -1;
+        let is_range = false;
+        match &rhs {
+            ParsedRHS::Function { args: (Operand::Cell(w, x), Operand::Cell(y, z)), .. } => {
+                r1 = *w as i32;
+                r2 = *y as i32;
+                c1 = *x as i32;
+                c2 = *z as i32;    
+                is_range = true;
+            }
+            ParsedRHS::Arithmetic { lhs, rhs, .. } => {
+                match lhs {
+                    Operand::Cell(w, x) => {
+                        r1 = *w as i32;
+                        c1 = *x as i32;
+                    }
+                    _ => {}
+                }
+                match rhs {
+                    Operand::Cell(y, z) => {
+                        r2 = *y as i32;
+                        c2 = *z as i32;
+                    }
+                    _ => {}
+                }
+            }
+            ParsedRHS::Sleep(Operand::Cell(r, c)) => {
+                r1 = *r as i32;
+                c1 = *r as i32;
+            }
+            ParsedRHS::SingleValue(Operand::Cell(r, c)) => {
+                r1 = *r as i32;
+                c1 = *c as i32;
+            }
+            _ => {
+               
             }
         };
+        
+        // let (r1, r2, c1, c2, range_bool) = match self.find_depends(formula) {
+        //     Ok(deps) => deps,
+        //     Err(_) => {
+        //         *status_out = "invalid command".to_string();
+        //         return;
+        //     }
+        // };
         // new
         // println!("find_depends took {:?}", start_time.elapsed().as_secs_f64());
         // new
@@ -1088,7 +1104,7 @@ impl Spreadsheet {
         // new
         let start_time = Instant::now();
         // new
-        if self.first_step_find_cycle(cell_name, r1, r2, c1, c2, range_bool) {
+        if self.first_step_find_cycle(row,col, r1, r2, c1, c2, is_range) {
             *status_out = "Cycle Detected".to_string();
             return;
         }
@@ -1105,7 +1121,7 @@ impl Spreadsheet {
         // new
         let start_time = Instant::now();
         // new
-        self.update_dependencies(cell_name, formula);
+        self.update_dependencies(row,col, r1, c1, r2, c2, is_range);
 
         let cell = match self.cells.get_mut(index).and_then(|opt| opt.as_mut()) {
             Some(cell) => cell,
@@ -1198,48 +1214,48 @@ impl Spreadsheet {
 
     pub fn spreadsheet_undo(&mut self) {
         println!("undo stack size {}", self.undo_stack.len());
-        // iterate through undo_stack extract cell name --> update dependencies --> set value
-        for i in 0..self.undo_stack.len() {
-            let (formula_new, row, col, value, error_state) = self.undo_stack.pop().unwrap();
-            let cell_name = Self::get_cell_name(row, col);
-            // add this to redo_stack
-            // get the current formula and value
-            // get immutable reference of cell
-            let index = ((row - 1) * self.cols + (col - 1)) as usize;
-            let cell = match self.cells.get(index).and_then(|opt| opt.as_ref()) {
-                Some(cell) => cell,
-                None => {
-                    continue; // Skip if cell doesn't exist
-                }
-            };
-            // clone should be affordable here. because anyways we will chaging the formula
-            // still check if clone is needed
-            self.redo_stack.push((
-                cell.formula.clone(),
-                cell.row,
-                cell.col,
-                cell.value,
-                cell.error,
-            ));
-            // remove old dependencies
-            self.remove_old_dependents(&cell_name);
+        // // iterate through undo_stack extract cell name --> update dependencies --> set value
+        // for i in 0..self.undo_stack.len() {
+        //     let (formula_new, row, col, value, error_state) = self.undo_stack.pop().unwrap();
+        //     let cell_name = Self::get_cell_name(row, col);
+        //     // add this to redo_stack
+        //     // get the current formula and value
+        //     // get immutable reference of cell
+        //     let index = ((row - 1) * self.cols + (col - 1)) as usize;
+        //     let cell = match self.cells.get(index).and_then(|opt| opt.as_ref()) {
+        //         Some(cell) => cell,
+        //         None => {
+        //             continue; // Skip if cell doesn't exist
+        //         }
+        //     };
+        //     // clone should be affordable here. because anyways we will chaging the formula
+        //     // still check if clone is needed
+        //     self.redo_stack.push((
+        //         cell.formula.clone(),
+        //         cell.row,
+        //         cell.col,
+        //         cell.value,
+        //         cell.error,
+        //     ));
+        //     // remove old dependencies
+        //     self.remove_old_dependents(&cell_name);
 
-            // update dependencies
-            if let Some(formula) = &formula_new {
-                if !formula.is_empty() {
-                    self.update_dependencies(&cell_name, &formula);
-                }
-            }
-            // set value
-            if let Some(cell) = self.cells.get_mut(index).and_then(|opt| opt.as_mut()) {
-                println!("enters here {:?} {} {}", formula_new, row, col);
-                cell.formula = formula_new;
-                cell.value = value;
-                cell.error = error_state;
-            }
-        }
-        // make the undo stack empty
-        self.undo_stack.clear();
+        //     // update dependencies
+        //     if let Some(formula) = &formula_new {
+        //         if !formula.is_empty() {
+        //             self.update_dependencies(&cell_name, &formula);
+        //         }
+        //     }
+        //     // set value
+        //     if let Some(cell) = self.cells.get_mut(index).and_then(|opt| opt.as_mut()) {
+        //         println!("enters here {:?} {} {}", formula_new, row, col);
+        //         cell.formula = formula_new;
+        //         cell.value = value;
+        //         cell.error = error_state;
+        //     }
+        // }
+        // // make the undo stack empty
+        // self.undo_stack.clear();
     }
 
     pub fn spreadsheet_redo(&mut self) {}

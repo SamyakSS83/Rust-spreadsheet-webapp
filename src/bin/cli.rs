@@ -1,6 +1,6 @@
 
 
-use cop::spreadsheet::Spreadsheet;
+use cop::spreadsheet::{ParsedRHS, Spreadsheet};
 
 // use crate::spreadsheet::{Spreadsheet, Spreadsheet as SpreadsheetTrait};
 use std::env;
@@ -118,10 +118,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             sheet.undo_stack.clear();
             let cell_name = &command[..equal_pos];
             let formula = &command[equal_pos + 1..];
-            if !sheet.is_valid_command(cell_name, formula) {
+            let (valid,row,col,rhs) = sheet.is_valid_command(cell_name, formula);
+            if !valid {
                 status = String::from("invalid command");
             } else {
-                sheet.spreadsheet_set_cell_value(cell_name, formula, &mut status);
+                sheet.spreadsheet_set_cell_value(row,col,rhs, &mut status);
             }
         } else if command == "UNDO" {
             if sheet.undo_stack.is_empty() {
@@ -139,7 +140,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let Some(formula) = formula {
                     println!("Setting formula: {} {}", cell_name, formula);
                     sheet.undo_stack.clear();
-                    sheet.spreadsheet_set_cell_value(&cell_name, &formula, &mut status);
+                    sheet.spreadsheet_set_cell_value(row, col,rhs, &mut status);
                 } else {
                     println!("Setting value: {} {}", cell_name, value);
                     sheet.spreadsheet_undo();
