@@ -253,9 +253,9 @@ impl Spreadsheet {
                 };
                 // Call the appropriate function based on the name
                 // For now, just return a dummy value
-                let r1 = r1 + 1;
-                let r2 = r2 + 1;
-
+                // let r1 = r1 + 1;
+                // let r2 = r2 + 1;
+                // println!("{},{}",r1,r2);
                 // new comment
 
                 let count = (r2 - r1 + 1) * (c2 - c1 + 1);
@@ -271,6 +271,7 @@ impl Spreadsheet {
                                     error = true;
                                     return (0, error);
                                 }
+                                // println!("{},c.value", c.value);
                                 values.push(c.value);
                             } else {
                                 values.push(0);
@@ -298,6 +299,7 @@ impl Spreadsheet {
                     }
                     FunctionName::Sum => {
                         // cell.error = false;
+                        // println!("Sum: {:?}", values);
                         error = false;
                         return (values.iter().sum(), error);
                     }
@@ -470,7 +472,7 @@ impl Spreadsheet {
             } else {
                 // Check all dependent cells using our helper method
                 let dependent_names = self.get_dependent_names(my_node);
-
+                // println!("Dependent names: {:?}", dependent_names);
                 for dependent_name in &dependent_names {
                     if !visited.contains(dependent_name) {
                         let r = dependent_name.0;
@@ -489,25 +491,6 @@ impl Spreadsheet {
 
         // No cycle found
         false
-    }
-
-    // Helper method to check for cycles before updating a cell
-    pub fn check_for_cycle<'a>(
-        &'a self,
-        r1: i32,
-        r2: i32,
-        c1: i32,
-        c2: i32,
-        range_bool: bool,
-        curr_cell: &'a Box<Cell>,
-    ) -> bool {
-        let mut visited = BTreeSet::new();
-        let mut stack = Vec::new();
-
-        // Start DFS from the current cell
-        stack.push(curr_cell);
-
-        self.rec_find_cycle_using_stack(r1, r2, c1, c2, range_bool, &mut visited, &mut stack)
     }
 
     // Count the number of dependent cells
@@ -697,9 +680,9 @@ impl Spreadsheet {
             }
 
             // Iterate over the range and update dependencies.
-            for r in r1..=r2 {
-                for c in start_col..=end_col {
-                    let dep_index = (r * self.cols + (c - 1)) as usize;
+            for r_it in start_row..=end_row {
+                for c_it in start_col..=end_col {
+                    let dep_index = ((r_it-1) * self.cols + (c_it - 1)) as usize;
                     if let Some(dep_cell) =
                         self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
                     {
