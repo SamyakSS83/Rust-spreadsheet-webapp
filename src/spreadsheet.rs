@@ -712,64 +712,56 @@ impl Spreadsheet {
         // Track temporarily marked nodes (for cycle detection)
         let mut temp_marked = BTreeSet::new();
 
-        // Helper function to perform DFS traversal
-        fn visit<'a>(
-            sheet: &'a Spreadsheet,
-            node: &'a Box<Cell>,
-            visited: &mut BTreeSet<(u16, u16)>,
-            temp_marked: &mut BTreeSet<(u16, u16)>,
-            sorted_nodes: &mut Vec<(u32, u32)>,
-        ) -> bool {
-            let key = (node.row as u16, node.col as u16);
+        // Use a stack for non-recursive DFS implementation to avoid stack overflow
+        let mut stack = vec![(starting, false)]; // (node, processed_children)
+
+        while let Some((node, processed)) = stack.pop() {
+            let key = (node.row, node.col);
 
             // If already in final result, we're done with this node
             if visited.contains(&key) {
-                return true;
+                continue;
+            }
+
+            // If we've processed all children, add this node to result
+            if processed {
+                visited.insert(key);
+                sorted_nodes.push((node.row as u32, node.col as u32));
+                temp_marked.remove(&key);
+                continue;
             }
 
             // Check for cycles (node is currently being processed)
             if temp_marked.contains(&key) {
-                return false; // Cycle detected
+                // Skip this node - cycle detected but already handled
+                continue;
             }
 
             // Mark temporarily to detect cycles
             temp_marked.insert(key);
 
-            // Get all dependent cells
-            let dependent_keys = sheet.get_dependent_names(node);
+            // Add node back to stack, marked as processed
+            stack.push((node, true));
 
-            // Process all dependents first
-            for dep_key in &dependent_keys {
+            // Get all dependent cells efficiently
+            let dependent_keys = self.get_dependent_names(node);
+
+            // Process all dependents - add them to stack
+            for dep_key in dependent_keys.iter().rev() {
+                // Reverse to maintain correct order
                 let (r, c) = *dep_key;
-                let dep_index = ((r - 1) * sheet.cols as u16 + (c - 1)) as usize;
+                let dep_index = ((r - 1) * self.cols as u16 + (c - 1)) as usize;
 
-                if let Some(dep_cell) = sheet.cells.get(dep_index).and_then(|opt| opt.as_ref()) {
-                    if !visit(sheet, dep_cell, visited, temp_marked, sorted_nodes) {
-                        return false; // Propagate cycle detection
+                if dep_index < self.cells.len() {
+                    if let Some(dep_cell) = self.cells.get(dep_index).and_then(|opt| opt.as_ref()) {
+                        if !visited.contains(&(r, c)) {
+                            stack.push((dep_cell, false));
+                        }
                     }
                 }
             }
-
-            // Remove temporary mark
-            temp_marked.remove(&key);
-
-            // Add to final result
-            visited.insert(key);
-            sorted_nodes.push((node.row as u32, node.col as u32));
-
-            true
         }
 
-        // Start the topological sort from the given cell
-        visit(
-            self,
-            starting,
-            &mut visited,
-            &mut temp_marked,
-            &mut sorted_nodes,
-        );
-
-        // No need to reverse - we're building the result in the correct order
         sorted_nodes
     }
 

@@ -9,7 +9,7 @@
 8		0               0               0               0               0               0               0               0               0               0               
 9		0               0               0               0               0               0               0               0               0               0               
 10		0               0               0               0               0               0               0               0               0               0               
-[0.7] (ok) > 		A		B		C		D		E		F		G		H		I		J		
+[1.0] (ok) > 		A		B		C		D		E		F		G		H		I		J		
 1		0               0               0               0               0               0               0               0               0               0               
 2		0               0               0               0               0               0               0               0               0               0               
 3		0               0               0               0               0               0               0               0               0               0               
@@ -31,5 +31,5 @@
 107		0               0               0               0               0               0               0               0               0               0               
 108		0               0               0               0               0               0               0               0               0               0               
 109		0               0               0               0               0               0               0               0               0               0               
-[0.0] (ok) > Total elapsed time: 0.8 seconds
+[0.0] (ok) > Total elapsed time: 1.1 seconds
 writing flamegraph to "flamegraph.svg"
