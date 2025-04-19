@@ -14,8 +14,8 @@ pub struct Cell {
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum Dependents {
-    Vector(Vec<String>),
-    Set(BTreeSet<String>),
+    Vector(Vec<(i32, i32)>),
+    Set(BTreeSet<(i32, i32)>),
     None,
 }
 
@@ -32,14 +32,15 @@ impl Cell {
         }
     }
 
-    pub fn dep_insert(&mut self, key: &str) {
+    pub fn dep_insert(&mut self, row: i32, col: i32) {
         // Set the initialised flag to 1 whenever a dependency is added
         self.dependents_initialised = 1;
+        let key = (row, col);
 
         match &mut self.dependents {
             Dependents::None => {
                 let mut v = Vec::new();
-                v.push(key.to_string());
+                v.push(key);
                 self.dependents = Dependents::Vector(v);
             }
             Dependents::Vector(vec) => {
@@ -47,41 +48,43 @@ impl Cell {
                     // Convert to OrderedSet
                     let mut set = BTreeSet::new();
                     for item in vec.iter() {
-                        set.insert(item.clone());
+                        set.insert(*item);
                     }
-                    set.insert(key.to_string());
+                    set.insert(key);
                     self.dependents = Dependents::Set(set);
                     // self.container = 1;
                 } else {
-                    vec.push(key.to_string());
+                    vec.push(key);
                 }
             }
             Dependents::Set(set) => {
-                set.insert(key.to_string());
+                set.insert(key);
             }
         }
     }
 
-    pub fn dep_remove(&mut self, key: &str) {
+    pub fn dep_remove(&mut self, row: i32, col: i32) {
+        let key = (row, col);
         match &mut self.dependents {
             Dependents::Vector(vec) => {
-                vec.retain(|k| k != key);
+                vec.retain(|k| k != &key);
             }
             Dependents::Set(set) => {
-                set.remove(key);
+                set.remove(&key);
             }
             Dependents::None => {}
         }
     }
 
-    pub fn contains(&self, key: &str) -> bool {
+    pub fn contains(&self, row: i32, col: i32) -> bool {
         if self.dependents_initialised == 0 {
             return false;
         }
 
+        let key = (row, col);
         match &self.dependents {
-            Dependents::Vector(vec) => vec.iter().any(|k| k == key),
-            Dependents::Set(set) => set.contains(key),
+            Dependents::Vector(vec) => vec.iter().any(|k| k == &key),
+            Dependents::Set(set) => set.contains(&key),
             Dependents::None => false,
         }
     }
@@ -92,14 +95,14 @@ pub fn cell_create(row: i32, col: i32) -> Box<Cell> {
     Box::new(Cell::create(row, col))
 }
 
-pub fn cell_dep_insert(cell: &mut Cell, key: &str) {
-    cell.dep_insert(key);
+pub fn cell_dep_insert(cell: &mut Cell, row: i32, col: i32) {
+    cell.dep_insert(row, col);
 }
 
-pub fn cell_dep_remove(cell: &mut Cell, key: &str) {
-    cell.dep_remove(key);
+pub fn cell_dep_remove(cell: &mut Cell, row: i32, col: i32) {
+    cell.dep_remove(row, col);
 }
 
-pub fn cell_contains(cell: &Cell, key: &str) -> bool {
-    cell.contains(key)
+pub fn cell_contains(cell: &Cell, row: i32, col: i32) -> bool {
+    cell.contains(row, col)
 }
