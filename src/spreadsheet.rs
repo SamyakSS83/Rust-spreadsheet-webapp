@@ -438,30 +438,30 @@ impl Spreadsheet {
         c1: i32,
         c2: i32,
         range_bool: bool,
-        visited: &mut BTreeSet<String>,
+        visited: &mut BTreeSet<(u16,u16)>,
         stack: &mut Vec<&'a Box<Cell>>,
     ) -> bool {
         while !stack.is_empty() {
             let my_node = stack.pop().unwrap();
 
             // Generate cell name for the current node
-            let cell_name = Self::get_cell_name(my_node.row, my_node.col);
+            // let cell_name = Self::get_cell_name(my_node.row as i32, my_node.col as i32);
 
             // Check if we've already visited this cell
-            if visited.contains(&cell_name) {
+            if visited.contains(&(my_node.row,my_node.col)) {
                 continue; // Skip cells we've already processed
             }
 
             // Mark as visited
-            visited.insert(cell_name);
+            visited.insert((my_node.row,my_node.col));
 
             // Check if the cell is part of the target range
             let in_range = if range_bool {
                 // For range functions (SUM, AVG, etc.)
-                my_node.row >= r1 && my_node.row <= r2 && my_node.col >= c1 && my_node.col <= c2
+                my_node.row as i32 >= r1 && my_node.row as i32 <= r2 && my_node.col as i32 >= c1 && my_node.col as i32 <= c2
             } else {
                 // For direct cell references
-                (my_node.row == r1 && my_node.col == c1) || (my_node.row == r2 && my_node.col == c2)
+                (my_node.row as i32 == r1 && my_node.col as i32 == c1) || (my_node.row as i32 == r2 && my_node.col as i32 == c2)
             };
 
             if in_range {
@@ -471,16 +471,17 @@ impl Spreadsheet {
                 // Check all dependent cells using our helper method
                 let dependent_names = self.get_dependent_names(my_node);
 
-                for dependent_name in dependent_names {
+                for dependent_name in &dependent_names {
                     if !visited.contains(dependent_name) {
-                        if let Some((r, c)) = self.spreadsheet_parse_cell_name(dependent_name) {
-                            let index = ((r - 1) * self.cols + (c - 1)) as usize;
+                        let r = dependent_name.0;
+                        let c = dependent_name.1;
+                            let index = ((r - 1) * self.cols as u16 + (c - 1)) as usize;
                             if index < self.cells.len() {
                                 if let Some(ref neighbor_node) = self.cells[index] {
                                     stack.push(neighbor_node);
                                 }
                             }
-                        }
+                        
                     }
                 }
             }
@@ -507,24 +508,6 @@ impl Spreadsheet {
         stack.push(curr_cell);
 
         self.rec_find_cycle_using_stack(r1, r2, c1, c2, range_bool, &mut visited, &mut stack)
-    }
-
-    // Collects keys from dependents regardless of the storage type
-    pub fn collect_dependent_keys(&self, cell: &Box<Cell>) -> Vec<String> {
-        match &cell.dependents {
-            crate::cell::Dependents::Vector(vec) => {
-                // For Vector, simply clone all elements
-                vec.iter().cloned().collect()
-            }
-            crate::cell::Dependents::Set(set) => {
-                // For BTreeSet, also simply clone all elements (already ordered)
-                set.iter().cloned().collect()
-            }
-            crate::cell::Dependents::None => {
-                // No dependents
-                Vec::new()
-            }
-        }
     }
 
     // Count the number of dependent cells
@@ -585,91 +568,98 @@ impl Spreadsheet {
     pub fn remove_old_dependents(&mut self, r: usize, c: usize) {
         // eprintln!("Entered remove_old_dependents for cell: {cell_name}");
         // Parse the provided cell name to locate the current cell.
-        let formula_and_deps = {
+        let formula = {
             let index = (r - 1) * self.cols as usize + (c - 1);
             if let Some(curr_cell) = self.cells.get(index).and_then(|opt| opt.as_ref()) {
                 // If there's no formula, nothing to update.
                 curr_cell.formula.clone()
             } else {
-                None
+                ParsedRHS::None
             }
         };
 
         // eprintln!("Formula and deps: {:?}", formula_and_deps);
+        
+        match formula {
+            ParsedRHS::Function { name, args } =>{
+                if !name.is_cut_or_copy() {
+                    let (arg1, arg2) = args;
+                    // arg1 nd arg2 would be Operand cell type from there extract r1,c1 and r2,c2
+                    let (start_row, start_col) = match arg1 {
+                        Operand::Cell(r, c) => (r, c),
+                        Operand::Number(_) => (0, 0), // Placeholder
+                    };
+                    let (end_row, end_col) = match arg2 {
+                        Operand::Cell(r, c) => (r, c),
+                        Operand::Number(_) => (0, 0), // Placeholder
+                    };
+                    for r in (start_row - 1)..=(end_row - 1) {
+                        for c in start_col..=end_col {
+                            let dep_index = (r * self.cols as usize + (c - 1)) as usize;
 
-        // Process formula if it exists
-        if let Some(formula) = formula_and_deps {
-            // eprintln!("Removing from formula: {formula}");
-            let ranges = ["MIN", "MAX", "AVG", "SUM", "STDEV"];
-            let mut processed_range = false;
-            // Check if the formula starts with one of the range functions.
-            for range in &ranges {
-                if formula.starts_with(range) {
-                    // eprintln!("Entered range function: {range}");
-                    if let (Some(open_paren_idx), Some(close_paren_idx)) =
-                        (formula.find('('), formula.find(')'))
-                    {
-                        let only_range = &formula[open_paren_idx + 1..close_paren_idx];
-
-                        if let Some(colon_pos) = only_range.find(':') {
-                            let start_cell_str = only_range[..colon_pos].trim();
-                            let end_cell_str = only_range[colon_pos + 1..].trim();
-
-                            if let (Some((start_row, start_col)), Some((end_row, end_col))) = (
-                                self.spreadsheet_parse_cell_name(start_cell_str),
-                                self.spreadsheet_parse_cell_name(end_cell_str),
-                            ) {
-                                // Convert to 0-based indices and iterate over the range.
-                                for r in (start_row - 1)..=(end_row - 1) {
-                                    for c in start_col..=end_col {
-                                        let dep_index = (r * self.cols + (c - 1)) as usize;
-
-                                        if let Some(dep_cell) = self
-                                            .cells
-                                            .get_mut(dep_index)
-                                            .and_then(|opt| opt.as_mut())
-                                        {
-                                            crate::cell::cell_dep_remove(
-                                                dep_cell, r as u16, c as u16,
-                                            );
-                                        }
-                                    }
-                                }
-                                processed_range = true;
+                            if let Some(dep_cell) = self
+                                .cells
+                                .get_mut(dep_index)
+                                .and_then(|opt| opt.as_mut())
+                            {
+                                crate::cell::cell_dep_remove(
+                                    dep_cell, r as u16, c as u16,
+                                );
                             }
                         }
                     }
-                    break;
+                    
                 }
             }
+            ParsedRHS::Sleep(op) => {
+                // Handle sleep function here
+                // if Cell as operand then remove dependency
+                // else do nothing
+                if let Operand::Cell(dep_r, dep_c) = op {
+                    let dep_index = ((dep_r - 1) * self.cols as usize + (dep_c - 1)) as usize;
 
-            // Non-range formula: remove dependency from the two cell references found.
-            if !processed_range {
-                // eprintln!(
-                //     "Removing old dependents for cell: {} with formula: {}",
-                //     cell_name, formula
-                // );
-                if let Ok((dep_r1, dep_r2, dep_c1, dep_c2, _)) = self.find_depends(&formula) {
-                    if dep_r1 > 0 {
-                        let dep_index = ((dep_r1 - 1) * self.cols + (dep_c1 - 1)) as usize;
-
-                        if let Some(dep_cell) =
-                            self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
-                        {
-                            crate::cell::cell_dep_remove(dep_cell, r as u16, c as u16);
-                        }
-                    }
-
-                    if dep_r2 > 0 {
-                        let dep_index = ((dep_r2 - 1) * self.cols + (dep_c2 - 1)) as usize;
-
-                        if let Some(dep_cell) =
-                            self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
-                        {
-                            crate::cell::cell_dep_remove(dep_cell, r as u16, c as u16);
-                        }
+                    if let Some(dep_cell) =
+                        self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
+                    {
+                        crate::cell::cell_dep_remove(dep_cell, r as u16, c as u16);
                     }
                 }
+            }
+            ParsedRHS::Arithmetic {lhs,operator,rhs} => {
+                // dep cell = lhs cell 
+                // dep cell2 = rhs cell
+                if let Operand::Cell(dep_r,dep_c ) = lhs {
+                    let dep_index = ((dep_r - 1) * self.cols as usize + (dep_c - 1)) as usize;
+
+                    if let Some(dep_cell) =
+                        self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
+                    {
+                        crate::cell::cell_dep_remove(dep_cell, r as u16, c as u16);
+                    }
+                }
+                if let Operand::Cell(dep_r,dep_c ) = rhs {
+                    let dep_index = ((dep_r - 1) * self.cols as usize + (dep_c - 1)) as usize;
+
+                    if let Some(dep_cell) =
+                        self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
+                    {
+                        crate::cell::cell_dep_remove(dep_cell, r as u16, c as u16);
+                    }
+                }
+            }
+            ParsedRHS::SingleValue(op) => {
+                if let Operand::Cell(dep_r, dep_c) = op {
+                    let dep_index = ((dep_r - 1) * self.cols as usize + (dep_c - 1)) as usize;
+
+                    if let Some(dep_cell) =
+                        self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
+                    {
+                        crate::cell::cell_dep_remove(dep_cell, r as u16, c as u16);
+                    }
+                }
+            }
+            _ => {
+
             }
         }
     }
