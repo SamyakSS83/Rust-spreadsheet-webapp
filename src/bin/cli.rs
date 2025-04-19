@@ -40,7 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let mut start_time = Instant::now(); // Start time for the first command
-    let mut sheet = Spreadsheet::spreadsheet_create(rows, cols).unwrap();
+    let mut sheet = Spreadsheet::spreadsheet_create(rows as u16, cols as u16).unwrap();
     let mut elapsed_time;
     let mut status = String::from("ok");
     let mut show = true;
@@ -122,7 +122,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if !valid {
                 status = String::from("invalid command");
             } else {
-                sheet.spreadsheet_set_cell_value(row as usize,col as usize,rhs, &mut status);
+                sheet.spreadsheet_set_cell_value(row,col,rhs, &mut status);
             }
         } else if command == "UNDO" {
             // if sheet.undo_stack.is_empty() {
