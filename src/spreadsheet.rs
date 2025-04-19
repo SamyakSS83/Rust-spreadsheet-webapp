@@ -230,7 +230,6 @@ impl Spreadsheet {
         Ok((r1, r2, c1, c2, range_bool))
     }
 
-
     pub fn spreadsheet_evaluate_expression(
         &self,
         expr: &ParsedRHS,
@@ -239,7 +238,7 @@ impl Spreadsheet {
     ) -> (i32, bool) {
         match expr {
             ParsedRHS::Function { name, args } => {
-                let mut error =false;
+                let mut error = false;
                 // Handle function evaluation here
                 let (arg1, arg2) = args;
                 // arg1 nd arg2 would be Operand cell type from there extract r1,c1 and r2,c2
@@ -440,7 +439,7 @@ impl Spreadsheet {
         c1: i32,
         c2: i32,
         range_bool: bool,
-        visited: &mut BTreeSet<(u16,u16)>,
+        visited: &mut BTreeSet<(u16, u16)>,
         stack: &mut Vec<&'a Box<Cell>>,
     ) -> bool {
         while !stack.is_empty() {
@@ -450,20 +449,24 @@ impl Spreadsheet {
             // let cell_name = Self::get_cell_name(my_node.row as i32, my_node.col as i32);
 
             // Check if we've already visited this cell
-            if visited.contains(&(my_node.row,my_node.col)) {
+            if visited.contains(&(my_node.row, my_node.col)) {
                 continue; // Skip cells we've already processed
             }
 
             // Mark as visited
-            visited.insert((my_node.row,my_node.col));
+            visited.insert((my_node.row, my_node.col));
 
             // Check if the cell is part of the target range
             let in_range = if range_bool {
                 // For range functions (SUM, AVG, etc.)
-                my_node.row as i32 >= r1 && my_node.row as i32 <= r2 && my_node.col as i32 >= c1 && my_node.col as i32 <= c2
+                my_node.row as i32 >= r1
+                    && my_node.row as i32 <= r2
+                    && my_node.col as i32 >= c1
+                    && my_node.col as i32 <= c2
             } else {
                 // For direct cell references
-                (my_node.row as i32 == r1 && my_node.col as i32 == c1) || (my_node.row as i32 == r2 && my_node.col as i32 == c2)
+                (my_node.row as i32 == r1 && my_node.col as i32 == c1)
+                    || (my_node.row as i32 == r2 && my_node.col as i32 == c2)
             };
 
             if in_range {
@@ -477,13 +480,12 @@ impl Spreadsheet {
                     if !visited.contains(dependent_name) {
                         let r = dependent_name.0;
                         let c = dependent_name.1;
-                            let index = ((r - 1) * self.cols as u16 + (c - 1)) as usize;
-                            if index < self.cells.len() {
-                                if let Some(ref neighbor_node) = self.cells[index] {
-                                    stack.push(neighbor_node);
-                                }
+                        let index = ((r - 1) * self.cols as u16 + (c - 1)) as usize;
+                        if index < self.cells.len() {
+                            if let Some(ref neighbor_node) = self.cells[index] {
+                                stack.push(neighbor_node);
                             }
-                        
+                        }
                     }
                 }
             }
@@ -562,9 +564,9 @@ impl Spreadsheet {
         };
 
         // eprintln!("Formula and deps: {:?}", formula_and_deps);
-        
+
         match formula {
-            ParsedRHS::Function { name, args } =>{
+            ParsedRHS::Function { name, args } => {
                 if !name.is_cut_or_copy() {
                     let (arg1, arg2) = args;
                     // arg1 nd arg2 would be Operand cell type from there extract r1,c1 and r2,c2
@@ -580,18 +582,13 @@ impl Spreadsheet {
                         for c in start_col..=end_col {
                             let dep_index = (r * self.cols as usize + (c - 1)) as usize;
 
-                            if let Some(dep_cell) = self
-                                .cells
-                                .get_mut(dep_index)
-                                .and_then(|opt| opt.as_mut())
+                            if let Some(dep_cell) =
+                                self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
                             {
-                                crate::cell::cell_dep_remove(
-                                    dep_cell, r as u16, c as u16,
-                                );
+                                crate::cell::cell_dep_remove(dep_cell, r as u16, c as u16);
                             }
                         }
                     }
-                    
                 }
             }
             ParsedRHS::Sleep(op) => {
@@ -608,10 +605,10 @@ impl Spreadsheet {
                     }
                 }
             }
-            ParsedRHS::Arithmetic {lhs,operator,rhs} => {
-                // dep cell = lhs cell 
+            ParsedRHS::Arithmetic { lhs, operator, rhs } => {
+                // dep cell = lhs cell
                 // dep cell2 = rhs cell
-                if let Operand::Cell(dep_r,dep_c ) = lhs {
+                if let Operand::Cell(dep_r, dep_c) = lhs {
                     let dep_index = ((dep_r - 1) * self.cols as usize + (dep_c - 1)) as usize;
 
                     if let Some(dep_cell) =
@@ -620,7 +617,7 @@ impl Spreadsheet {
                         crate::cell::cell_dep_remove(dep_cell, r as u16, c as u16);
                     }
                 }
-                if let Operand::Cell(dep_r,dep_c ) = rhs {
+                if let Operand::Cell(dep_r, dep_c) = rhs {
                     let dep_index = ((dep_r - 1) * self.cols as usize + (dep_c - 1)) as usize;
 
                     if let Some(dep_cell) =
@@ -641,9 +638,7 @@ impl Spreadsheet {
                     }
                 }
             }
-            _ => {
-
-            }
+            _ => {}
         }
     }
 
@@ -682,7 +677,7 @@ impl Spreadsheet {
             // Iterate over the range and update dependencies.
             for r_it in start_row..=end_row {
                 for c_it in start_col..=end_col {
-                    let dep_index = ((r_it-1) * self.cols + (c_it - 1)) as usize;
+                    let dep_index = ((r_it - 1) * self.cols + (c_it - 1)) as usize;
                     if let Some(dep_cell) =
                         self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
                     {
@@ -708,63 +703,73 @@ impl Spreadsheet {
     }
 
     pub fn topo_sort(&self, starting: &Box<Cell>) -> Vec<(u32, u32)> {
-        // Create an empty result vector (equivalent to Node_l *head = NULL)
+        // Create an empty result vector for the sorted nodes
         let mut sorted_nodes = Vec::new();
 
-        // Create a stack for DFS traversal (equivalent to Node *st_top)
-        let mut stack = Vec::new();
-        stack.push(starting);
-
-        // Track visited cells using a BTreeSet (equivalent to OrderedSet *visited)
+        // Track visited cells using a BTreeSet
         let mut visited = BTreeSet::new();
 
-        // Working stack to simulate recursive DFS with explicit stack
-        let mut work_stack = Vec::new();
-        work_stack.push(starting);
+        // Track temporarily marked nodes (for cycle detection)
+        let mut temp_marked = BTreeSet::new();
 
-        while let Some(current) = work_stack.pop() {
-            // Generate cell name for the current node
+        // Helper function to perform DFS traversal
+        fn visit<'a>(
+            sheet: &'a Spreadsheet,
+            node: &'a Box<Cell>,
+            visited: &mut BTreeSet<(u16, u16)>,
+            temp_marked: &mut BTreeSet<(u16, u16)>,
+            sorted_nodes: &mut Vec<(u32, u32)>,
+        ) -> bool {
+            let key = (node.row as u16, node.col as u16);
 
-            let key = (current.row as u16, current.col as u16);
-
+            // If already in final result, we're done with this node
             if visited.contains(&key) {
-                continue;
+                return true;
             }
 
-            // Get dependents of current cell
-            let dependent_keys = self.get_dependent_names(current);
-            let mut all_dependents_visited = true;
+            // Check for cycles (node is currently being processed)
+            if temp_marked.contains(&key) {
+                return false; // Cycle detected
+            }
 
-            // Check if all dependents are visited
+            // Mark temporarily to detect cycles
+            temp_marked.insert(key);
+
+            // Get all dependent cells
+            let dependent_keys = sheet.get_dependent_names(node);
+
+            // Process all dependents first
             for dep_key in &dependent_keys {
-                if !visited.contains(dep_key) {
-                    // If we have an unvisited dependent, we need to process it first
-                    let (r, c) = *dep_key;
-                    let dep_index = ((r - 1) * self.cols as u16 + (c - 1)) as u16;
-                    if let Some(dep_cell) = self
-                        .cells
-                        .get(dep_index as usize)
-                        .and_then(|opt| opt.as_ref())
-                    {
-                        // Push current cell back to work stack
-                        work_stack.push(current);
-                        // Push dependent to work stack to process first
-                        work_stack.push(dep_cell);
-                        all_dependents_visited = false;
-                        break;
+                let (r, c) = *dep_key;
+                let dep_index = ((r - 1) * sheet.cols as u16 + (c - 1)) as usize;
+
+                if let Some(dep_cell) = sheet.cells.get(dep_index).and_then(|opt| opt.as_ref()) {
+                    if !visit(sheet, dep_cell, visited, temp_marked, sorted_nodes) {
+                        return false; // Propagate cycle detection
                     }
                 }
             }
 
-            // If all dependents are visited, we can add this cell to sorted result
-            if all_dependents_visited {
-                visited.insert((current.row as u16, current.col as u16));
-                sorted_nodes.push((current.row as u32, current.col as u32));
-            }
+            // Remove temporary mark
+            temp_marked.remove(&key);
+
+            // Add to final result
+            visited.insert(key);
+            sorted_nodes.push((node.row as u32, node.col as u32));
+
+            true
         }
 
-        // Reverse result to match original C implementation order
-        sorted_nodes.reverse();
+        // Start the topological sort from the given cell
+        visit(
+            self,
+            starting,
+            &mut visited,
+            &mut temp_marked,
+            &mut sorted_nodes,
+        );
+
+        // No need to reverse - we're building the result in the correct order
         sorted_nodes
     }
 
@@ -1313,9 +1318,8 @@ impl Spreadsheet {
                     Operand::Cell(row as usize, col as usize)
                 } else {
                     // It's a number with optional sign
-                    
-                        return (false, ParsedRHS::None);
-                    
+
+                    return (false, ParsedRHS::None);
                 }
             } else {
                 if let Ok(value) = first_operand.parse::<i32>() {
@@ -1332,9 +1336,8 @@ impl Spreadsheet {
                     Operand::Cell(row as usize, col as usize)
                 } else {
                     // It's a number with optional sign
-                    
-                        return (false, ParsedRHS::None);
-                    
+
+                    return (false, ParsedRHS::None);
                 }
             } else {
                 if let Ok(value) = second_operand.parse::<i32>() {
@@ -1353,8 +1356,7 @@ impl Spreadsheet {
                         rhs: oprnd2,
                     };
                 }
-            }
-            else {
+            } else {
                 return (false, ParsedRHS::None);
             }
 
