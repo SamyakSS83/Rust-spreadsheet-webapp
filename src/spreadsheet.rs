@@ -24,7 +24,7 @@ pub enum ParsedRHS {
     Sleep(Operand),
     Arithmetic {
         lhs: Operand,
-        operator: String,
+        operator: char,
         rhs: Operand,
     },
     SingleValue(Operand),
@@ -393,11 +393,11 @@ impl Spreadsheet {
                 let mut has_error = lhs_err || rhs_err;
 
                 // Compute result
-                let result = match operator.as_str() {
-                    "+" => lhs_val + rhs_val,
-                    "-" => lhs_val - rhs_val,
-                    "*" => lhs_val * rhs_val,
-                    "/" => {
+                let result = match operator {
+                    '+' => lhs_val + rhs_val,
+                    '-' => lhs_val - rhs_val,
+                    '*' => lhs_val * rhs_val,
+                    '/' => {
                         if rhs_val == 0 {
                             has_error = true;
                             0 // or some default value
@@ -1340,14 +1340,17 @@ impl Spreadsheet {
                 return (false, ParsedRHS::None);
             };
             // Check if the operator is valid
-            if operator == "+" || operator == "-" || operator == "*" || operator == "/" {
-                ret.0 = true;
-                ret.1 = ParsedRHS::Arithmetic {
-                    lhs: oprnd1,
-                    operator: operator.to_string(),
-                    rhs: oprnd2,
-                };
-            } else {
+            if let Some(op_char) = operator.chars().next() {
+                if "+-*/".contains(op_char) {
+                    ret.0 = true;
+                    ret.1 = ParsedRHS::Arithmetic {
+                        lhs: oprnd1,
+                        operator: op_char,
+                        rhs: oprnd2,
+                    };
+                }
+            }
+            else {
                 return (false, ParsedRHS::None);
             }
 
