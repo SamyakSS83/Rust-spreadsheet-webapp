@@ -3,24 +3,24 @@ use std::collections::BTreeSet; // Using BTreeSet as an AVL-tree-like ordered co
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Cell {
-    pub row: i32,
-    pub col: i32,
+    pub row: u16,
+    pub col: u16,
     pub error: bool,
     pub value: i32,
     pub formula: Option<String>,
-    pub dependents_initialised: i32,
+    pub dependents_initialised: u16,
     pub dependents: Dependents,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum Dependents {
-    Vector(Vec<(i32, i32)>),
-    Set(BTreeSet<(i32, i32)>),
+    Vector(Vec<(u16, u16)>),
+    Set(BTreeSet<(u16, u16)>),
     None,
 }
 
 impl Cell {
-    pub fn create(row: i32, col: i32) -> Self {
+    pub fn create(row: u16, col: u16) -> Self {
         Cell {
             row,
             col,
@@ -32,7 +32,7 @@ impl Cell {
         }
     }
 
-    pub fn dep_insert(&mut self, row: i32, col: i32) {
+    pub fn dep_insert(&mut self, row: u16, col: u16) {
         // Set the initialised flag to 1 whenever a dependency is added
         self.dependents_initialised = 1;
         let key = (row, col);
@@ -63,7 +63,7 @@ impl Cell {
         }
     }
 
-    pub fn dep_remove(&mut self, row: i32, col: i32) {
+    pub fn dep_remove(&mut self, row: u16, col: u16) {
         let key = (row, col);
         match &mut self.dependents {
             Dependents::Vector(vec) => {
@@ -76,7 +76,7 @@ impl Cell {
         }
     }
 
-    pub fn contains(&self, row: i32, col: i32) -> bool {
+    pub fn contains(&self, row: u16, col: u16) -> bool {
         if self.dependents_initialised == 0 {
             return false;
         }
@@ -91,18 +91,18 @@ impl Cell {
 }
 
 // Public interface functions that match the C API
-pub fn cell_create(row: i32, col: i32) -> Box<Cell> {
+pub fn cell_create(row: u16, col: u16) -> Box<Cell> {
     Box::new(Cell::create(row, col))
 }
 
-pub fn cell_dep_insert(cell: &mut Cell, row: i32, col: i32) {
+pub fn cell_dep_insert(cell: &mut Cell, row: u16, col: u16) {
     cell.dep_insert(row, col);
 }
 
-pub fn cell_dep_remove(cell: &mut Cell, row: i32, col: i32) {
+pub fn cell_dep_remove(cell: &mut Cell, row: u16, col: u16) {
     cell.dep_remove(row, col);
 }
 
-pub fn cell_contains(cell: &Cell, row: i32, col: i32) -> bool {
+pub fn cell_contains(cell: &Cell, row: u16, col: u16) -> bool {
     cell.contains(row, col)
 }

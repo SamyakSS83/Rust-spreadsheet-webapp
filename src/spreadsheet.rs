@@ -19,7 +19,7 @@ pub struct Spreadsheet {
 
 pub enum ParsedRHS {
     Function {
-        name: String,
+        name: FunctionName,
         args: (Operand,Operand), // now each arg can be a cell (row, col) or number
     },
     Sleep(Operand),
@@ -37,6 +37,36 @@ pub enum Operand {
     Number(i32),
     Cell(usize, usize), // (row, col)
 }
+
+#[derive(Debug)]
+pub enum FunctionName{
+    Min,
+    Max,
+    Avg,
+    Sum,
+    Stdev,
+    Cut,
+    Copy,
+}
+
+impl FunctionName {
+    pub fn from_str(name: &str) -> Option<Self> {
+        match name.to_uppercase().as_str() {
+            "MIN" => Some(FunctionName::Min),
+            "MAX" => Some(FunctionName::Max),
+            "AVG" => Some(FunctionName::Avg),
+            "SUM" => Some(FunctionName::Sum),
+            "STDEV" => Some(FunctionName::Stdev),
+            "CUT" => Some(FunctionName::Cut),
+            "COPY" => Some(FunctionName::Copy),
+            _ => None,
+        }
+    }
+    pub fn is_cut_or_copy(&self) -> bool {
+        matches!(self, FunctionName::Cut | FunctionName::Copy)
+    }
+}
+
 
 
 impl Spreadsheet {
@@ -682,7 +712,7 @@ impl Spreadsheet {
     }
 
     // Helper method for the rec_find_cycle_using_stack function - simplifies dependent collection
-    pub fn get_dependent_names<'a>(&self, cell: &'a Box<Cell>) -> Vec<&'a String> {
+    pub fn get_dependent_names<'a>(&self, cell: &'a Box<Cell>) -> Vec<(u16,u16)> {
         match &cell.dependents {
             crate::cell::Dependents::Vector(vec) => vec.iter().collect(),
             crate::cell::Dependents::Set(set) => set.iter().collect(),
@@ -774,7 +804,7 @@ impl Spreadsheet {
                                             .get_mut(dep_index)
                                             .and_then(|opt| opt.as_mut())
                                         {
-                                            crate::cell::cell_dep_remove(dep_cell, r,c);
+                                            crate::cell::cell_dep_remove(dep_cell, r as u16,c as u16);
                                         }
                                     }
                                 }
@@ -799,7 +829,7 @@ impl Spreadsheet {
                         if let Some(dep_cell) =
                             self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
                         {
-                            crate::cell::cell_dep_remove(dep_cell, cell_name);
+                            crate::cell::cell_dep_remove(dep_cell, r as u16 , c as u16);
                         }
                     }
 
@@ -809,7 +839,7 @@ impl Spreadsheet {
                         if let Some(dep_cell) =
                             self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
                         {
-                            crate::cell::cell_dep_remove(dep_cell, cell_name);
+                            crate::cell::cell_dep_remove(dep_cell, r as u16, c as u16);
                         }
                     }
                 }
@@ -849,7 +879,7 @@ impl Spreadsheet {
                                             .get_mut(dep_index)
                                             .and_then(|opt| opt.as_mut())
                                         {
-                                            crate::cell::cell_dep_insert(dep_cell, r,c);
+                                            crate::cell::cell_dep_insert(dep_cell, r as u16,c as u16);
                                         }
                                     }
                                 }
@@ -860,7 +890,7 @@ impl Spreadsheet {
                 if let Some(dep_cell) =
                     self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
                 {
-                    crate::cell::cell_dep_insert(dep_cell, r,c);
+                    crate::cell::cell_dep_insert(dep_cell, r as u16,c as u16);
                 }
             }
             if end_row > 0 {
@@ -868,7 +898,7 @@ impl Spreadsheet {
                 if let Some(dep_cell) =
                     self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
                 {
-                    crate::cell::cell_dep_insert(dep_cell, r,c);
+                    crate::cell::cell_dep_insert(dep_cell, r as u16,c as u16);
                 }
             }
         }
@@ -1358,19 +1388,16 @@ impl Spreadsheet {
                         self.spreadsheet_parse_cell_name(end.trim()),
                     ) {
                         if start_row <= end_row && start_col <= end_col {
-                            if matches!(
-                                func.to_uppercase().as_str(),
-                                "MIN" | "MAX" | "SUM" | "AVG" | "STDEV" | "CUT" | "COPY"
-                            ) {
-                                ret.0 = true;
-                                ret.3 = ParsedRHS::Function { name: func.to_string(), args: (Operand::Cell(start_row as usize,start_col as usize),Operand::Cell(end_row as usize, end_col as usize)) };
-                                return ret;
-                            }
-
-                            if matches!(func.to_uppercase().as_str(), "CUT" | "COPY") {
-                                // Parse the destination cell (cell_name)
-                                //spreadsheet parse cell name gives 1 based row and col
-
+                            // if matches!(
+                            //     func.to_uppercase().as_str(),
+                            //     "MIN" | "MAX" | "SUM" | "AVG" | "STDEV" | "CUT" | "COPY"
+                            // ) {
+                            //     ret.0 = true;
+                            //     ret.3 = ParsedRHS::Function { name: FunctionName::, args: (Operand::Cell(start_row as usize,start_col as usize),Operand::Cell(end_row as usize, end_col as usize)) };
+                            //     return ret;
+                            // }
+                            if let Some(fname) = FunctionName::from_str(&func) {
+                                if func == "Copy" || func == "Cut" {
                                     let dest_row = ret.1;
                                     let dest_col = ret.2;
                                     // Calculate offsets
@@ -1386,7 +1413,7 @@ impl Spreadsheet {
                                         && final_col > 0
                                         && final_col <= self.cols as isize {
                                             ret.0 = true;
-                                            ret.3 = ParsedRHS::Function { name: func.to_string(), args: (Operand::Cell(start_row as usize,start_col as usize),Operand::Cell(final_row as usize, final_col as usize)) };
+                                            ret.3 = ParsedRHS::Function { name: fname, args: (Operand::Cell(start_row as usize,start_col as usize),Operand::Cell(final_row as usize, final_col as usize)) };
                                             return ret;
 
                                         }
@@ -1396,6 +1423,15 @@ impl Spreadsheet {
                                         return ret;
                                     }
                                 
+                                }
+                                ret.0 = true;
+                                ret.3 = ParsedRHS::Function {
+                                    name: fname,
+                                    args: (
+                                        Operand::Cell(start_row as usize, start_col as usize),
+                                        Operand::Cell(end_row as usize, end_col as usize),
+                                    ),
+                                };
                                 return ret;
                             }
                         }
