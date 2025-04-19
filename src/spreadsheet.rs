@@ -15,12 +15,11 @@ pub struct Spreadsheet {
     // pub cells: Vec<Vec<Option<Cell>>>,
 }
 
-#[derive(Debug)]
-
+#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
 pub enum ParsedRHS {
     Function {
         name: FunctionName,
-        args: (Operand,Operand), // now each arg can be a cell (row, col) or number
+        args: (Operand, Operand), // now each arg can be a cell (row, col) or number
     },
     Sleep(Operand),
     Arithmetic {
@@ -32,14 +31,14 @@ pub enum ParsedRHS {
     None,
 }
 
-#[derive(Debug)]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
 pub enum Operand {
     Number(i32),
     Cell(usize, usize), // (row, col)
 }
 
-#[derive(Debug)]
-pub enum FunctionName{
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub enum FunctionName {
     Min,
     Max,
     Avg,
@@ -67,8 +66,6 @@ impl FunctionName {
     }
 }
 
-
-
 impl Spreadsheet {
     pub fn spreadsheet_create(rows: i32, cols: i32) -> Option<Box<Self>> {
         let mut sheet = Box::new(Spreadsheet {
@@ -89,7 +86,7 @@ impl Spreadsheet {
         for r in 1..=rows {
             for c in 1..=cols {
                 let index = ((r - 1) * cols + (c - 1)) as usize;
-                sheet.cells[index] = Some(cell_create(r, c));
+                sheet.cells[index] = Some(cell_create(r as u16, c as u16));
             }
         }
 
@@ -712,10 +709,10 @@ impl Spreadsheet {
     }
 
     // Helper method for the rec_find_cycle_using_stack function - simplifies dependent collection
-    pub fn get_dependent_names<'a>(&self, cell: &'a Box<Cell>) -> Vec<(u16,u16)> {
+    pub fn get_dependent_names<'a>(&self, cell: &'a Box<Cell>) -> Vec<(u16, u16)> {
         match &cell.dependents {
-            crate::cell::Dependents::Vector(vec) => vec.iter().collect(),
-            crate::cell::Dependents::Set(set) => set.iter().collect(),
+            crate::cell::Dependents::Vector(vec) => vec.clone(),
+            crate::cell::Dependents::Set(set) => set.iter().cloned().collect(),
             crate::cell::Dependents::None => Vec::new(),
         }
     }
@@ -738,7 +735,7 @@ impl Spreadsheet {
         // };
 
         // Get the index of the cell in the flattened vector
-        let index = (r_ - 1) * self.cols as usize + (c_ - 1) ;
+        let index = (r_ - 1) * self.cols as usize + (c_ - 1);
 
         // Get the cell from the spreadsheet
         let start_node = match &self.cells[index] {
@@ -757,10 +754,10 @@ impl Spreadsheet {
         self.rec_find_cycle_using_stack(r1, r2, c1, c2, range_bool, &mut visited, &mut stack)
     }
 
-    pub fn remove_old_dependents(&mut self, r : usize, c: usize) {
+    pub fn remove_old_dependents(&mut self, r: usize, c: usize) {
         // eprintln!("Entered remove_old_dependents for cell: {cell_name}");
         // Parse the provided cell name to locate the current cell.
-        let formula_and_deps =  {
+        let formula_and_deps = {
             let index = (r - 1) * self.cols as usize + (c - 1);
             if let Some(curr_cell) = self.cells.get(index).and_then(|opt| opt.as_ref()) {
                 // If there's no formula, nothing to update.
@@ -804,7 +801,9 @@ impl Spreadsheet {
                                             .get_mut(dep_index)
                                             .and_then(|opt| opt.as_mut())
                                         {
-                                            crate::cell::cell_dep_remove(dep_cell, r as u16,c as u16);
+                                            crate::cell::cell_dep_remove(
+                                                dep_cell, r as u16, c as u16,
+                                            );
                                         }
                                     }
                                 }
@@ -829,7 +828,7 @@ impl Spreadsheet {
                         if let Some(dep_cell) =
                             self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
                         {
-                            crate::cell::cell_dep_remove(dep_cell, r as u16 , c as u16);
+                            crate::cell::cell_dep_remove(dep_cell, r as u16, c as u16);
                         }
                     }
 
@@ -847,58 +846,60 @@ impl Spreadsheet {
         }
     }
 
-    pub fn update_dependencies(&mut self, r:usize,c:usize, start_row:i32,start_col:i32,end_row:i32,end_col:i32,is_range:bool) -> i32 {
+    pub fn update_dependencies(
+        &mut self,
+        r: usize,
+        c: usize,
+        start_row: i32,
+        start_col: i32,
+        end_row: i32,
+        end_col: i32,
+        is_range: bool,
+    ) -> i32 {
         // eprintln!("Entered update_dependencies for cell: {cell_name} with formula: {formula}");
         // First, parse the cell—this mirrors C obtaining the current cell coordinates.
         // let (r, c) = self.spreadsheet_parse_cell_name(cell_name).unwrap();
 
         // Remove old dependencies
-        self.remove_old_dependents(r,c);
+        self.remove_old_dependents(r, c);
         // Add the new formula to the cell
         let index = (r - 1) * self.cols as usize + (c - 1);
         // if let Some(cell) = self.cells.get_mut(index).and_then(|opt| opt.as_mut()) {
         //     cell.formula = Some(formula.to_string());
         // }
         // Now, process the formula to update dependencies.
-        
+
         if is_range {
             let r1 = start_row - 1;
-                                let r2 = end_row - 1;
+            let r2 = end_row - 1;
 
-                                // Check validity as in the C code:
-                                if end_col < start_col || (start_col == end_col && r2 < r1) {
-                                    return -1;
-                                }
+            // Check validity as in the C code:
+            if end_col < start_col || (start_col == end_col && r2 < r1) {
+                return -1;
+            }
 
-                                // Iterate over the range and update dependencies.
-                                for r in r1..=r2 {
-                                    for c in start_col..=end_col {
-                                        let dep_index = (r * self.cols + (c - 1)) as usize;
-                                        if let Some(dep_cell) = self
-                                            .cells
-                                            .get_mut(dep_index)
-                                            .and_then(|opt| opt.as_mut())
-                                        {
-                                            crate::cell::cell_dep_insert(dep_cell, r as u16,c as u16);
-                                        }
-                                    }
-                                }
-        }
-        else {
+            // Iterate over the range and update dependencies.
+            for r in r1..=r2 {
+                for c in start_col..=end_col {
+                    let dep_index = (r * self.cols + (c - 1)) as usize;
+                    if let Some(dep_cell) =
+                        self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
+                    {
+                        crate::cell::cell_dep_insert(dep_cell, r as u16, c as u16);
+                    }
+                }
+            }
+        } else {
             if start_row > 0 {
                 let dep_index = ((start_row - 1) * self.cols + (start_col - 1)) as usize;
-                if let Some(dep_cell) =
-                    self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
-                {
-                    crate::cell::cell_dep_insert(dep_cell, r as u16,c as u16);
+                if let Some(dep_cell) = self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut()) {
+                    crate::cell::cell_dep_insert(dep_cell, r as u16, c as u16);
                 }
             }
             if end_row > 0 {
                 let dep_index = ((end_row - 1) * self.cols + (end_col - 1)) as usize;
-                if let Some(dep_cell) =
-                    self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
-                {
-                    crate::cell::cell_dep_insert(dep_cell, r as u16,c as u16);
+                if let Some(dep_cell) = self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut()) {
+                    crate::cell::cell_dep_insert(dep_cell, r as u16, c as u16);
                 }
             }
         }
@@ -922,10 +923,10 @@ impl Spreadsheet {
 
         while let Some(current) = work_stack.pop() {
             // Generate cell name for the current node
-            let cell_name = Self::get_cell_name(current.row, current.col);
 
-            // If we've already processed this cell, skip it
-            if visited.contains(&cell_name) {
+            let key = (current.row as u16, current.col as u16);
+
+            if visited.contains(&key) {
                 continue;
             }
 
@@ -935,12 +936,12 @@ impl Spreadsheet {
 
             // Check if all dependents are visited
             for dep_key in &dependent_keys {
-                if !visited.contains(*dep_key) {
+                if !visited.contains(dep_key) {
                     // If we have an unvisited dependent, we need to process it first
-                    if let Some((r, c)) = self.spreadsheet_parse_cell_name(dep_key) {
-                        let dep_index = ((r - 1) * self.cols + (c - 1)) as usize;
+                        let (r, c) = *dep_key;
+                        let dep_index = ((r - 1) * self.cols as u16 + (c - 1)) as u16;
                         if let Some(dep_cell) =
-                            self.cells.get(dep_index).and_then(|opt| opt.as_ref())
+                            self.cells.get(dep_index as usize).and_then(|opt| opt.as_ref())
                         {
                             // Push current cell back to work stack
                             work_stack.push(current);
@@ -949,13 +950,13 @@ impl Spreadsheet {
                             all_dependents_visited = false;
                             break;
                         }
-                    }
+                    
                 }
             }
 
             // If all dependents are visited, we can add this cell to sorted result
             if all_dependents_visited {
-                visited.insert(cell_name);
+                visited.insert((current.row as u16, current.col as u16));
                 sorted_nodes.push((current.row as u32, current.col as u32));
             }
         }
@@ -968,8 +969,8 @@ impl Spreadsheet {
     pub fn spreadsheet_set_cell_value(
         &mut self,
         row: usize,
-        col:usize,
-        rhs : ParsedRHS,
+        col: usize,
+        rhs: ParsedRHS,
         status_out: &mut String,
     ) {
         // if cell_name.is_empty() || formula.is_empty() {
@@ -1083,11 +1084,14 @@ impl Spreadsheet {
         let mut c2 = -1;
         let is_range = false;
         match &rhs {
-            ParsedRHS::Function { args: (Operand::Cell(w, x), Operand::Cell(y, z)), .. } => {
+            ParsedRHS::Function {
+                args: (Operand::Cell(w, x), Operand::Cell(y, z)),
+                ..
+            } => {
                 r1 = *w as i32;
                 r2 = *y as i32;
                 c1 = *x as i32;
-                c2 = *z as i32;    
+                c2 = *z as i32;
                 is_range = true;
             }
             ParsedRHS::Arithmetic { lhs, rhs, .. } => {
@@ -1114,11 +1118,9 @@ impl Spreadsheet {
                 r1 = *r as i32;
                 c1 = *c as i32;
             }
-            _ => {
-               
-            }
+            _ => {}
         };
-        
+
         // let (r1, r2, c1, c2, range_bool) = match self.find_depends(formula) {
         //     Ok(deps) => deps,
         //     Err(_) => {
@@ -1134,7 +1136,7 @@ impl Spreadsheet {
         // new
         let start_time = Instant::now();
         // new
-        if self.first_step_find_cycle(row,col, r1, r2, c1, c2, is_range) {
+        if self.first_step_find_cycle(row, col, r1, r2, c1, c2, is_range) {
             *status_out = "Cycle Detected".to_string();
             return;
         }
@@ -1151,7 +1153,7 @@ impl Spreadsheet {
         // new
         let start_time = Instant::now();
         // new
-        self.update_dependencies(row,col, r1, c1, r2, c2, is_range);
+        self.update_dependencies(row, col, r1, c1, r2, c2, is_range);
 
         let cell = match self.cells.get_mut(index).and_then(|opt| opt.as_mut()) {
             Some(cell) => cell,
@@ -1171,15 +1173,19 @@ impl Spreadsheet {
         //     "pushing cell {}{} with formula: {:?}",
         //     cell.row, cell.col, cell.formula
         // );
-        self.undo_stack.push((
-            cell.formula.clone(),
-            cell.row,
-            cell.col,
-            cell.value,
-            cell.error,
-        ));
+
+        // UNDO PENDING
+        // self.undo_stack.push((
+        //     cell.formula.clone(),
+        //     cell.row,
+        //     cell.col,
+        //     cell.value,
+        //     cell.error,
+        // ));
+
+        // UNDO PENDING
         // println!("length of stack after push {}", self.undo_stack.len());
-        cell.formula = Some(formula.to_string());
+        cell.formula = rhs;
         // mutable reference not needed anymore
         // take cell as immutable
         let cell = match self.cells.get(index).and_then(|opt| opt.as_ref()) {
@@ -1214,8 +1220,14 @@ impl Spreadsheet {
             let sorted_index = ((row as i32 - 1) * self.cols + (col as i32 - 1)) as usize;
 
             // Get formula from the sorted cell
+            // let formula = match self.cells.get(sorted_index).and_then(|opt| opt.as_ref()) {
+            //     Some(cell) => cell.formula.as_deref().unwrap_or(""),
+            //     None => {
+            //         continue; // Skip if cell doesn't exist
+            //     }
+            // };
             let formula = match self.cells.get(sorted_index).and_then(|opt| opt.as_ref()) {
-                Some(cell) => cell.formula.as_deref().unwrap_or(""),
+                Some(cell) => cell.formula.clone(),
                 None => {
                     continue; // Skip if cell doesn't exist
                 }
@@ -1329,9 +1341,9 @@ impl Spreadsheet {
         }
     }
 
-    pub fn is_valid_command(&self, cell_name: &str, formula: &str) -> (bool, u32,u32,ParsedRHS) {
+    pub fn is_valid_command(&self, cell_name: &str, formula: &str) -> (bool, u32, u32, ParsedRHS) {
         // initialise the return value
-        let mut ret = (false,0,0,ParsedRHS::None);
+        let mut ret = (false, 0, 0, ParsedRHS::None);
         if cell_name.is_empty() || formula.is_empty() {
             return ret;
         }
@@ -1411,18 +1423,28 @@ impl Spreadsheet {
                                     if final_row > 0
                                         && final_row <= self.rows as isize
                                         && final_col > 0
-                                        && final_col <= self.cols as isize {
-                                            ret.0 = true;
-                                            ret.3 = ParsedRHS::Function { name: fname, args: (Operand::Cell(start_row as usize,start_col as usize),Operand::Cell(final_row as usize, final_col as usize)) };
-                                            return ret;
-
-                                        }
-                                    else {
+                                        && final_col <= self.cols as isize
+                                    {
+                                        ret.0 = true;
+                                        ret.3 = ParsedRHS::Function {
+                                            name: fname,
+                                            args: (
+                                                Operand::Cell(
+                                                    start_row as usize,
+                                                    start_col as usize,
+                                                ),
+                                                Operand::Cell(
+                                                    final_row as usize,
+                                                    final_col as usize,
+                                                ),
+                                            ),
+                                        };
+                                        return ret;
+                                    } else {
                                         // Invalid destination cell
                                         ret.0 = false;
                                         return ret;
                                     }
-                                
                                 }
                                 ret.0 = true;
                                 ret.3 = ParsedRHS::Function {
@@ -1455,20 +1477,19 @@ impl Spreadsheet {
             return ret;
         }
         // Check for arithmetic expressions with cell references or numbers
-        let (b,x) = self.is_valid_arithmetic_expression(formula);
+        let (b, x) = self.is_valid_arithmetic_expression(formula);
         if b {
             ret.0 = true;
             ret.3 = x;
             return ret;
-        }
-        else {
+        } else {
             ret.0 = false;
             return ret;
         }
     }
-    fn is_valid_arithmetic_expression(&self, expr: &str) -> (bool,ParsedRHS) {
+    fn is_valid_arithmetic_expression(&self, expr: &str) -> (bool, ParsedRHS) {
         // initialise the return value
-        let mut ret = (false,ParsedRHS::None);
+        let mut ret = (false, ParsedRHS::None);
         // let mut oprnd1 = Operand::Number(0);
         // let mut oprnd2 = Operand::Number(0);
         // Use regex to separate expression into components
@@ -1488,39 +1509,34 @@ impl Spreadsheet {
                 // self.spreadsheet_parse_cell_name(first_operand).is_some()
                 if let Some((row, col)) = self.spreadsheet_parse_cell_name(first_operand) {
                     Operand::Cell(row as usize, col as usize)
-                }
-                else {
-                // It's a number with optional sign
-                if let Ok(value) = first_operand.parse::<i32>() {
-                    Operand::Number(value)
                 } else {
-                    return (false,ParsedRHS::None);
+                    // It's a number with optional sign
+                    if let Ok(value) = first_operand.parse::<i32>() {
+                        Operand::Number(value)
+                    } else {
+                        return (false, ParsedRHS::None);
+                    }
                 }
-            }
-        }
-        else {
-            return (false,ParsedRHS::None);
-        };
+            } else {
+                return (false, ParsedRHS::None);
+            };
 
             // Verify second operand
             let oprnd2 = if second_operand.chars().next().unwrap().is_ascii_alphabetic() {
                 // It's a cell reference
                 if let Some((row, col)) = self.spreadsheet_parse_cell_name(second_operand) {
                     Operand::Cell(row as usize, col as usize)
-                }
-                
-            else {
-                // It's a number with optional sign
-                if let Ok(value) = second_operand.parse::<i32>() {
-                    Operand::Number(value)
                 } else {
-                    return (false,ParsedRHS::None);
+                    // It's a number with optional sign
+                    if let Ok(value) = second_operand.parse::<i32>() {
+                        Operand::Number(value)
+                    } else {
+                        return (false, ParsedRHS::None);
+                    }
                 }
-            }
-        }
-        else {
-            return (false,ParsedRHS::None);
-        };
+            } else {
+                return (false, ParsedRHS::None);
+            };
             // Check if the operator is valid
             if operator == "+" || operator == "-" || operator == "*" || operator == "/" {
                 ret.0 = true;
@@ -1530,14 +1546,12 @@ impl Spreadsheet {
                     rhs: oprnd2,
                 };
             } else {
-                return (false,ParsedRHS::None);
+                return (false, ParsedRHS::None);
             }
 
-        ret
-    }
-    else {
-        ret
+            ret
+        } else {
+            ret
+        }
     }
 }
-}
-

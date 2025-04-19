@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet; // Using BTreeSet as an AVL-tree-like ordered collection
+use std::collections::BTreeSet;
+
+use crate::spreadsheet::ParsedRHS; // Using BTreeSet as an AVL-tree-like ordered collection
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Cell {
@@ -7,7 +9,8 @@ pub struct Cell {
     pub col: u16,
     pub error: bool,
     pub value: i32,
-    pub formula: Option<String>,
+    // pub formula: Option<String>,
+    pub formula : ParsedRHS,
     pub dependents_initialised: u16,
     pub dependents: Dependents,
 }
@@ -26,7 +29,7 @@ impl Cell {
             col,
             value: 0,
             error: false,
-            formula: None,
+            formula: ParsedRHS::None,
             dependents_initialised: 0,
             dependents: Dependents::None,
         }
