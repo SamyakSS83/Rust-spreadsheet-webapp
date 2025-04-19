@@ -230,375 +230,203 @@ impl Spreadsheet {
         Ok((r1, r2, c1, c2, range_bool))
     }
 
-    pub fn spreadsheet_evaluate_function(&self, func: &str, args: &str, expr: &str) -> (i32, bool) {
-        // SLEEP function
-        let mut error = false;
-        if func.eq_ignore_ascii_case("SLEEP") {
-            let mut val = 0;
 
-            // Case 1: args is a numeric value
-            if Self::is_numeric(args) {
-                val = args.parse::<i32>().unwrap_or(0);
-                // cell.error = false;
-            } else {
-                // Case 2: args is a cell reference
-                let mut sign = 1;
-                let args_str = if args.starts_with('-') {
-                    sign = -1;
-                    &args[1..]
-                } else if args.starts_with('+') {
-                    &args[1..]
-                } else {
-                    args
+    pub fn spreadsheet_evaluate_expression(
+        &self,
+        expr: &ParsedRHS,
+        _row: usize,
+        _col: usize,
+    ) -> (i32, bool) {
+        match expr {
+            ParsedRHS::Function { name, args } => {
+                let mut error =false;
+                // Handle function evaluation here
+                let (arg1, arg2) = args;
+                // arg1 nd arg2 would be Operand cell type from there extract r1,c1 and r2,c2
+                let (r1, c1) = match arg1 {
+                    Operand::Cell(r, c) => (*r, *c),
+                    Operand::Number(_) => (0, 0), // Placeholder
                 };
+                let (r2, c2) = match arg2 {
+                    Operand::Cell(r, c) => (*r, *c),
+                    Operand::Number(_) => (0, 0), // Placeholder
+                };
+                // Call the appropriate function based on the name
+                // For now, just return a dummy value
+                let r1 = r1 + 1;
+                let r2 = r2 + 1;
 
-                if let Some((row, col)) = self.spreadsheet_parse_cell_name(args_str) {
-                    let index = ((row - 1) * self.cols + (col - 1)) as usize;
-                    if index < self.cells.len() {
-                        if let Some(ref op_cell) = self.cells[index] {
-                            val = sign * op_cell.value;
-                            if op_cell.error {
-                                // cell.error = true;
-                                error = true;
-                                return (val, error);
+                // new comment
+
+                let count = (r2 - r1 + 1) * (c2 - c1 + 1);
+                let mut values = Vec::with_capacity(count as usize);
+
+                for i in r1..=r2 {
+                    for j in c1..=c2 {
+                        let index = ((i - 1) * self.cols as usize + (j - 1)) as usize;
+                        if index < self.cells.len() {
+                            if let Some(ref c) = self.cells[index] {
+                                if c.error {
+                                    // cell.error = true;
+                                    error = true;
+                                    return (0, error);
+                                }
+                                values.push(c.value);
                             } else {
-                                // cell.error = false;
-                                error = false;
+                                values.push(0);
+                            }
+                        }
+                    }
+                }
+
+                match name {
+                    FunctionName::Min => {
+                        if values.is_empty() {
+                            return (0, error);
+                        }
+                        // cell.error = false;
+                        error = false;
+                        return (*values.iter().min().unwrap_or(&0), error);
+                    }
+                    FunctionName::Max => {
+                        if values.is_empty() {
+                            return (0, error);
+                        }
+                        // cell.error = false;
+                        error = false;
+                        return (*values.iter().max().unwrap_or(&0), error);
+                    }
+                    FunctionName::Sum => {
+                        // cell.error = false;
+                        error = false;
+                        return (values.iter().sum(), error);
+                    }
+                    FunctionName::Avg => {
+                        if values.is_empty() {
+                            return (0, error);
+                        }
+                        // cell.error = false;
+                        error = false;
+                        let sum: i32 = values.iter().sum();
+                        return (sum / values.len() as i32, error);
+                    }
+                    FunctionName::Stdev => {
+                        if values.len() < 2 {
+                            return (0, error);
+                        }
+
+                        let mean = values.iter().sum::<i32>() as f64 / values.len() as f64;
+                        let variance = values
+                            .iter()
+                            .map(|&x| {
+                                let diff = x as f64 - mean;
+                                diff * diff
+                            })
+                            .sum::<f64>()
+                            / values.len() as f64;
+
+                        // cell.error = false;
+                        error = false;
+                        return ((variance.sqrt().round()) as i32, error);
+                    }
+                    _ => {}
+                }
+
+                (0, error)
+            }
+            ParsedRHS::Sleep(op) => {
+                // Handle sleep function here
+                let mut val = 0;
+                let mut error = false;
+
+                match op {
+                    Operand::Number(n) => {
+                        // Just a direct number: no error
+                        val = *n;
+                    }
+                    Operand::Cell(r, c) => {
+                        let index = (r - 1) * self.cols as usize + (c - 1);
+                        if let Some(cell) = self.cells.get(index).and_then(|c| c.as_ref()) {
+                            val = cell.value;
+                            if cell.error {
+                                error = true;
+                                return (val, true);
                             }
                         } else {
-                            // Cell not found or not initialized, use 0
+                            // Uninitialized cell → default to 0
                             val = 0;
                         }
                     }
                 }
+
+                // Sleep if val > 0
+                if val > 0 {
+                    std::thread::sleep(std::time::Duration::from_secs(val as u64));
+                }
+
+                (val, error)
             }
+            ParsedRHS::Arithmetic { lhs, operator, rhs } => {
+                let (lhs_val, lhs_err) = match lhs {
+                    Operand::Number(n) => (*n, false),
+                    Operand::Cell(r, c) => {
+                        let index = (r - 1) * self.cols as usize + (c - 1);
+                        self.cells[index]
+                            .as_ref()
+                            .map_or((0, true), |cell| (cell.value, cell.error))
+                    }
+                };
 
-            // Sleep if value is positive
-            if val > 0 {
-                std::thread::sleep(std::time::Duration::from_secs(val as u64));
-            }
+                let (rhs_val, rhs_err) = match rhs {
+                    Operand::Number(n) => (*n, false),
+                    Operand::Cell(r, c) => {
+                        let index = (r - 1) * self.cols as usize + (c - 1);
+                        self.cells[index]
+                            .as_ref()
+                            .map_or((0, true), |cell| (cell.value, cell.error))
+                    }
+                };
 
-            return (val, error);
-        }
+                // Combine error flags
+                let mut has_error = lhs_err || rhs_err;
 
-        // Evaluate range functions
-        let count: i32;
-        let result = self.find_depends(expr);
-
-        if let Ok((r1, r2, c1, c2, _range_bool)) = result {
-            // Convert from 0-based to 1-based index for consistency with C code
-            let r1 = r1 + 1;
-            let r2 = r2 + 1;
-
-            // new comment
-
-            // count = (r2 - r1 + 1) * (c2 - c1 + 1);
-            // let mut values = Vec::with_capacity(count as usize);
-
-            // for i in r1..=r2 {
-            //     for j in c1..=c2 {
-            //         let index = ((i - 1) * self.cols + (j - 1)) as usize;
-            //         if index < self.cells.len() {
-            //             if let Some(ref c) = self.cells[index] {
-            //                 if c.error {
-            //                     // cell.error = true;
-            //                     error = true;
-            //                     return (0, error);
-            //                 }
-            //                 values.push(c.value);
-            //             } else {
-            //                 values.push(0);
-            //             }
-            //         }
-            //     }
-            // }
-
-            // if func.eq_ignore_ascii_case("MIN") {
-            //     if values.is_empty() {
-            //         return (0, error);
-            //     }
-            //     // cell.error = false;
-            //     error = false;
-            //     return (*values.iter().min().unwrap_or(&0), error);
-            // } else if func.eq_ignore_ascii_case("MAX") {
-            //     if values.is_empty() {
-            //         return (0, error);
-            //     }
-            //     // cell.error = false;
-            //     error = false;
-            //     return (*values.iter().max().unwrap_or(&0), error);
-            // } else if func.eq_ignore_ascii_case("SUM") {
-            //     // cell.error = false;
-            //     error = false;
-            //     return (values.iter().sum(), error);
-            // } else if func.eq_ignore_ascii_case("AVG") {
-            //     if values.is_empty() {
-            //         return (0, error);
-            //     }
-            //     // cell.error = false;
-            //     error = false;
-            //     let sum: i32 = values.iter().sum();
-            //     return (sum / values.len() as i32, error);
-            // } else if func.eq_ignore_ascii_case("STDEV") {
-            //     if values.len() < 2 {
-            //         return (0, error);
-            //     }
-
-            //     let mean = values.iter().sum::<i32>() as f64 / values.len() as f64;
-            //     let variance = values
-            //         .iter()
-            //         .map(|&x| {
-            //             let diff = x as f64 - mean;
-            //             diff * diff
-            //         })
-            //         .sum::<f64>()
-            //         / values.len() as f64;
-
-            //     // cell.error = false;
-            //     error = false;
-            //     return ((variance.sqrt().round()) as i32, error);
-            // }
-
-            // new comment
-            let mut sum: i32 = 0;
-            let mut count: usize = 0;
-            let mut min_val: i32 = i32::MAX;
-            let mut max_val: i32 = i32::MIN;
-            let mut mean: f64 = 0.0;
-            let mut m2: f64 = 0.0; // for variance
-            let mut n: f64 = 0.0;
-
-            for i in r1..=r2 {
-                for j in c1..=c2 {
-                    let index = ((i - 1) * self.cols + (j - 1)) as usize;
-                    if index < self.cells.len() {
-                        let val = if let Some(ref c) = self.cells[index] {
-                            if c.error {
-                                error = true;
-                                return (0, error);
-                            }
-                            c.value
+                // Compute result
+                let result = match operator.as_str() {
+                    "+" => lhs_val + rhs_val,
+                    "-" => lhs_val - rhs_val,
+                    "*" => lhs_val * rhs_val,
+                    "/" => {
+                        if rhs_val == 0 {
+                            has_error = true;
+                            0 // or some default value
                         } else {
-                            0
-                        };
-
-                        count += 1;
-                        sum += val;
-                        if val < min_val {
-                            min_val = val;
+                            lhs_val / rhs_val
                         }
-                        if val > max_val {
-                            max_val = val;
-                        }
-
-                        // Welford's algorithm for variance
-                        n += 1.0;
-                        let delta = val as f64 - mean;
-                        mean += delta / n;
-                        m2 += delta * (val as f64 - mean);
                     }
-                }
-            }
-
-            if func.eq_ignore_ascii_case("MIN") {
-                return (if count == 0 { 0 } else { min_val }, false);
-            } else if func.eq_ignore_ascii_case("MAX") {
-                return (if count == 0 { 0 } else { max_val }, false);
-            } else if func.eq_ignore_ascii_case("SUM") {
-                return (sum, false);
-            } else if func.eq_ignore_ascii_case("AVG") {
-                return (if count == 0 { 0 } else { sum / count as i32 }, false);
-            } else if func.eq_ignore_ascii_case("STDEV") {
-                if count < 2 {
-                    return (0, false);
-                }
-                let variance = m2 / n;
-                return (variance.sqrt().round() as i32, false);
-            }
-        }
-
-        // Unknown function
-        (0, error)
-    }
-
-    pub fn spreadsheet_evaluate_expression(
-        &self,
-        expr: &str,
-        _row: usize,
-        _col: usize,
-    ) -> (i32, bool) {
-        // let expr = self.cells[row * (self.cols as usize) + col].as_ref().unwrap().formula.as_ref().unwrap();
-        if expr.is_empty() {
-            return (0, false);
-        }
-        // let index = ((row as i32 - 1) * self.cols + (col as i32 - 1)) as usize;
-        //get mutable reference to cell given row and col
-        // let cell = match self.cells.get_mut(index).and_then(|opt| opt.as_mut()) {
-        //     Some(cell) => cell,
-        //     None => {
-        //         // Cell not found, return 0 // this won't happen // valid cell already checked in caller
-        //         return 0;
-        //     }
-        // };
-
-        //Check for function call pattern: FUNC(...)
-        let func_regex = regex::Regex::new(r"^([A-Za-z]+)\((.*)\)$").unwrap();
-        if let Some(captures) = func_regex.captures(expr) {
-            let func = captures.get(1).unwrap().as_str();
-            let args = captures.get(2).unwrap().as_str();
-            return self.spreadsheet_evaluate_function(func, args, expr);
-        }
-
-        // Check if the expr is a cell reference (e.g. A1)
-        let cell_regex = regex::Regex::new(r"^[A-Za-z]+[0-9]+$").unwrap();
-        if cell_regex.is_match(expr) {
-            // It's a cell reference
-            if let Some((row, col)) = self.spreadsheet_parse_cell_name(expr) {
-                let index = ((row - 1) * self.cols + (col - 1)) as usize;
-                if index < self.cells.len() {
-                    if let Some(ref c) = self.cells[index] {
-                        // cell.error = c.error;
-                        return (c.value, c.error);
+                    _ => {
+                        has_error = true;
+                        0
                     }
-                }
-            }
-            return (0, false);
-        }
+                };
 
-        // Check for arithmetic operations
-        // Parse the first number or cell reference
-        let mut i = 0;
-        let expr_chars: Vec<char> = expr.chars().collect();
-        let len = expr_chars.len();
-
-        let mut num1 = 0;
-        let mut sign1 = 1;
-
-        // Handle sign for first operand
-        if i < len && expr_chars[i] == '+' {
-            i += 1;
-        } else if i < len && expr_chars[i] == '-' {
-            sign1 = -1;
-            i += 1;
-        }
-
-        // Parse the first operand (either a number or cell reference)
-        if i < len && expr_chars[i].is_ascii_digit() {
-            // It's a number
-            let mut j = i;
-            while j < len && expr_chars[j].is_ascii_digit() {
-                num1 = num1 * 10 + (expr_chars[j] as u8 - b'0') as i32;
-                j += 1;
-            }
-            i = j;
-        } else if i < len && expr_chars[i].is_ascii_alphabetic() {
-            // It's a cell reference
-            let mut j = i;
-            while j < len && expr_chars[j].is_ascii_alphabetic() {
-                j += 1;
+                (result, has_error)
             }
 
-            let mut k = j;
-            while k < len && expr_chars[k].is_ascii_digit() {
-                k += 1;
-            }
-
-            let cell_name = &expr[i..k];
-            i = k;
-
-            if let Some((row, col)) = self.spreadsheet_parse_cell_name(cell_name) {
-                let index = ((row - 1) * self.cols + (col - 1)) as usize;
-                if index < self.cells.len() {
-                    if let Some(ref c) = self.cells[index] {
-                        if c.error {
-                            // cell.error = true;
-                            return (0, true);
-                        }
-                        num1 = c.value;
+            ParsedRHS::SingleValue(num) => {
+                // Handle single value expression here
+                match num {
+                    Operand::Cell(r, c) => {
+                        let index = (r - 1) * self.cols as usize + (c - 1);
+                        self.cells[index]
+                            .as_ref()
+                            .map_or((0, false), |cell| (cell.value, cell.error))
                     }
+                    Operand::Number(x) => (*x, false),
                 }
             }
-        }
-
-        num1 *= sign1;
-
-        // If no more characters, just return the first number
-        if i >= len {
-            // cell.error = false;
-            return (num1, false);
-        }
-
-        // Get the operation
-        let operation = expr_chars[i];
-        i += 1;
-
-        // Parse the second operand
-        let mut num2 = 0;
-        let mut sign2 = 1;
-
-        // Handle sign for second operand
-        if i < len && expr_chars[i] == '+' {
-            i += 1;
-        } else if i < len && expr_chars[i] == '-' {
-            sign2 = -1;
-            i += 1;
-        }
-
-        // Parse the second operand (either a number or cell reference)
-        if i < len && expr_chars[i].is_ascii_digit() {
-            // It's a number
-            let mut j = i;
-            while j < len && expr_chars[j].is_ascii_digit() {
-                num2 = num2 * 10 + (expr_chars[j] as u8 - b'0') as i32;
-                j += 1;
-            }
-        } else if i < len && expr_chars[i].is_ascii_alphabetic() {
-            // It's a cell reference
-            let mut j = i;
-            while j < len && expr_chars[j].is_ascii_alphabetic() {
-                j += 1;
-            }
-
-            let mut k = j;
-            while k < len && expr_chars[k].is_ascii_digit() {
-                k += 1;
-            }
-
-            let cell_name = &expr[i..k];
-
-            if let Some((row, col)) = self.spreadsheet_parse_cell_name(cell_name) {
-                let index = ((row - 1) * self.cols + (col - 1)) as usize;
-                if index < self.cells.len() {
-                    if let Some(ref c) = self.cells[index] {
-                        if c.error {
-                            // cell.error = true;
-                            return (0, true);
-                        }
-                        num2 = c.value;
-                    }
-                }
-            }
-        }
-
-        num2 *= sign2;
-
-        // Perform the operation
-        let mut error = false;
-        match operation {
-            '+' => (num1 + num2, error),
-            '-' => (num1 - num2, error),
-            '*' => (num1 * num2, error),
-            '/' => {
-                if num2 == 0 {
-                    error = true;
-                    (0, error)
-                } else {
-                    (num1 / num2, error)
-                }
-            }
-            _ => {
-                error = true;
-                (-1, error)
+            ParsedRHS::None => {
+                // No expression to evaluate
+                (0, false)
             }
         }
     }
@@ -938,19 +766,20 @@ impl Spreadsheet {
             for dep_key in &dependent_keys {
                 if !visited.contains(dep_key) {
                     // If we have an unvisited dependent, we need to process it first
-                        let (r, c) = *dep_key;
-                        let dep_index = ((r - 1) * self.cols as u16 + (c - 1)) as u16;
-                        if let Some(dep_cell) =
-                            self.cells.get(dep_index as usize).and_then(|opt| opt.as_ref())
-                        {
-                            // Push current cell back to work stack
-                            work_stack.push(current);
-                            // Push dependent to work stack to process first
-                            work_stack.push(dep_cell);
-                            all_dependents_visited = false;
-                            break;
-                        }
-                    
+                    let (r, c) = *dep_key;
+                    let dep_index = ((r - 1) * self.cols as u16 + (c - 1)) as u16;
+                    if let Some(dep_cell) = self
+                        .cells
+                        .get(dep_index as usize)
+                        .and_then(|opt| opt.as_ref())
+                    {
+                        // Push current cell back to work stack
+                        work_stack.push(current);
+                        // Push dependent to work stack to process first
+                        work_stack.push(dep_cell);
+                        all_dependents_visited = false;
+                        break;
+                    }
                 }
             }
 
@@ -1082,7 +911,7 @@ impl Spreadsheet {
         let mut r2 = -1;
         let mut c1 = -1;
         let mut c2 = -1;
-        let is_range = false;
+        let mut is_range = false;
         match &rhs {
             ParsedRHS::Function {
                 args: (Operand::Cell(w, x), Operand::Cell(y, z)),
@@ -1227,7 +1056,7 @@ impl Spreadsheet {
             //     }
             // };
             let formula = match self.cells.get(sorted_index).and_then(|opt| opt.as_ref()) {
-                Some(cell) => cell.formula.clone(),
+                Some(cell) => &cell.formula,
                 None => {
                     continue; // Skip if cell doesn't exist
                 }
