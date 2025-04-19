@@ -1313,14 +1313,16 @@ impl Spreadsheet {
                     Operand::Cell(row as usize, col as usize)
                 } else {
                     // It's a number with optional sign
-                    if let Ok(value) = first_operand.parse::<i32>() {
-                        Operand::Number(value)
-                    } else {
+                    
                         return (false, ParsedRHS::None);
-                    }
+                    
                 }
             } else {
-                return (false, ParsedRHS::None);
+                if let Ok(value) = first_operand.parse::<i32>() {
+                    Operand::Number(value)
+                } else {
+                    return (false, ParsedRHS::None);
+                }
             };
 
             // Verify second operand
@@ -1330,14 +1332,16 @@ impl Spreadsheet {
                     Operand::Cell(row as usize, col as usize)
                 } else {
                     // It's a number with optional sign
-                    if let Ok(value) = second_operand.parse::<i32>() {
-                        Operand::Number(value)
-                    } else {
+                    
                         return (false, ParsedRHS::None);
-                    }
+                    
                 }
             } else {
-                return (false, ParsedRHS::None);
+                if let Ok(value) = second_operand.parse::<i32>() {
+                    Operand::Number(value)
+                } else {
+                    return (false, ParsedRHS::None);
+                }
             };
             // Check if the operator is valid
             if let Some(op_char) = operator.chars().next() {

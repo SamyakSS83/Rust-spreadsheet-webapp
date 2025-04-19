@@ -158,7 +158,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 status = String::from("ok");
             }
         } else {
-            status = String::from("invalid command");
+            status = String::from("invalid command 3");
         }
 
         // Update the start_time after processing the command
