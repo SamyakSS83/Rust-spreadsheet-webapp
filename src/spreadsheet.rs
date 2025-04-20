@@ -5,12 +5,12 @@ use std::time::Instant;
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Spreadsheet {
-    pub rows: u16,
-    pub cols: u16,
-    pub view_row: u16,
-    pub view_col: u16,
+    pub rows: i16,
+    pub cols: i16,
+    pub view_row: i16,
+    pub view_col: i16,
     pub cells: Vec<Option<Box<Cell>>>,
-    pub undo_stack: Vec<(ParsedRHS, u16, u16)>,
+    pub undo_stack: Vec<(ParsedRHS, i16, i16)>,
     // pub cells: Vec<Vec<Option<Cell>>>,
 }
 
@@ -33,7 +33,7 @@ pub enum ParsedRHS {
 #[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
 pub enum Operand {
     Number(i32),
-    Cell(u16, u16), // (row, col)
+    Cell(i16, i16), // (row, col)
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -65,7 +65,7 @@ impl FunctionName {
 }
 
 impl Spreadsheet {
-    pub fn spreadsheet_create(rows: u16, cols: u16) -> Option<Box<Self>> {
+    pub fn spreadsheet_create(rows: i16, cols: i16) -> Option<Box<Self>> {
         // eprintln!("Creating spreadsheet with {} rows and {} columns", rows, cols);
         let mut sheet = Box::new(Spreadsheet {
             rows,
@@ -84,14 +84,14 @@ impl Spreadsheet {
         for r in 1..=rows {
             for c in 1..=cols {
                 let index = ((r - 1) as usize) * (cols as usize) + ((c - 1) as usize);
-                sheet.cells[index] = Some(cell_create(r as u16, c as u16));
+                sheet.cells[index] = Some(cell_create(r as i16, c as i16));
             }
         }
 
         Some(sheet)
     }
 
-    pub fn col_to_letter(col: u16) -> String {
+    pub fn col_to_letter(col: i16) -> String {
         let mut col = col;
         let mut result = String::new();
         while col > 0 {
@@ -102,17 +102,17 @@ impl Spreadsheet {
         result.chars().rev().collect()
     }
 
-    pub fn letter_to_col(letters: &str) -> u16 {
+    pub fn letter_to_col(letters: &str) -> i16 {
         letters
             .chars()
-            .fold(0, |acc, c| acc * 26 + (c as u16 - 'A' as u16 + 1))
+            .fold(0, |acc, c| acc * 26 + (c as i16 - 'A' as i16 + 1))
     }
 
-    pub fn get_cell_name(row: u16, col: u16) -> String {
+    pub fn get_cell_name(row: i16, col: i16) -> String {
         format!("{}{}", Self::col_to_letter(col), row)
     }
 
-    pub fn spreadsheet_parse_cell_name(&self, cell_name: &str) -> Option<(u16, u16)> {
+    pub fn spreadsheet_parse_cell_name(&self, cell_name: &str) -> Option<(i16, i16)> {
         let mut letters = String::new();
         let mut digits = String::new();
         let mut found_digit = false;
@@ -137,7 +137,7 @@ impl Spreadsheet {
         }
 
         let col = Self::letter_to_col(&letters);
-        let row = digits.parse::<u16>().ok()?;
+        let row = digits.parse::<i16>().ok()?;
 
         if col > self.cols || row > self.rows || row == 0 {
             return None;
@@ -149,7 +149,7 @@ impl Spreadsheet {
         !s.is_empty() && s.chars().all(|c| c.is_ascii_digit())
     }
 
-    pub fn find_depends(&self, formula: &str) -> Result<(u16, u16, u16, u16, bool), &'static str> {
+    pub fn find_depends(&self, formula: &str) -> Result<(i16, i16, i16, i16, bool), &'static str> {
         let mut range_bool = false;
         let ranges = ["MIN", "MAX", "AVG", "SUM", "STDEV"];
 
@@ -231,8 +231,8 @@ impl Spreadsheet {
     pub fn spreadsheet_evaluate_expression(
         &self,
         expr: &ParsedRHS,
-        _row: u16,
-        _col: u16,
+        _row: i16,
+        _col: i16,
     ) -> (i32, bool) {
         match expr {
             ParsedRHS::Function { name, args } => {
@@ -436,12 +436,12 @@ impl Spreadsheet {
 
     pub fn rec_find_cycle_using_stack<'a>(
         &'a self,
-        r1: u16,
-        r2: u16,
-        c1: u16,
-        c2: u16,
+        r1: i16,
+        r2: i16,
+        c1: i16,
+        c2: i16,
         range_bool: bool,
-        visited: &mut BTreeSet<(u16, u16)>,
+        visited: &mut BTreeSet<(i16, i16)>,
         stack: &mut Vec<&'a Box<Cell>>,
     ) -> bool {
         while !stack.is_empty() {
@@ -461,10 +461,10 @@ impl Spreadsheet {
             // Check if the cell is part of the target range
             let in_range = if range_bool {
                 // For range functions (SUM, AVG, etc.)
-                my_node.row as u16 >= r1
-                    && my_node.row as u16 <= r2
-                    && my_node.col as u16 >= c1
-                    && my_node.col as u16 <= c2
+                my_node.row as i16 >= r1
+                    && my_node.row as i16 <= r2
+                    && my_node.col as i16 >= c1
+                    && my_node.col as i16 <= c2
             } else {
                 // For direct cell references
                 (my_node.row == r1 && my_node.col == c1) || (my_node.row == r2 && my_node.col == c2)
@@ -508,7 +508,7 @@ impl Spreadsheet {
     }
 
     // Helper method for the rec_find_cycle_using_stack function - simplifies dependent collection
-    pub fn get_dependent_names<'a>(&self, cell: &'a Box<Cell>) -> Vec<(u16, u16)> {
+    pub fn get_dependent_names<'a>(&self, cell: &'a Box<Cell>) -> Vec<(i16, i16)> {
         match &cell.dependents {
             crate::cell::Dependents::Vector(vec) => vec.clone(),
             crate::cell::Dependents::Set(set) => set.iter().cloned().collect(),
@@ -519,12 +519,12 @@ impl Spreadsheet {
     // Entry point for cycle detection - checks if a given cell could create a cycle
     pub fn first_step_find_cycle(
         &self,
-        r_: u16,
-        c_: u16,
-        r1: u16,
-        r2: u16,
-        c1: u16,
-        c2: u16,
+        r_: i16,
+        c_: i16,
+        r1: i16,
+        r2: i16,
+        c1: i16,
+        c2: i16,
         range_bool: bool,
     ) -> bool {
         // Parse the cell name to get row and column indices
@@ -553,7 +553,7 @@ impl Spreadsheet {
         self.rec_find_cycle_using_stack(r1, r2, c1, c2, range_bool, &mut visited, &mut stack)
     }
 
-    pub fn remove_old_dependents(&mut self, r: u16, c: u16) {
+    pub fn remove_old_dependents(&mut self, r: i16, c: i16) {
         // Get formula from the cell we're updating
         let formula = {
             let index = ((r - 1) as usize * self.cols as usize + (c - 1) as usize) as usize;
@@ -643,12 +643,12 @@ impl Spreadsheet {
 
     pub fn update_dependencies(
         &mut self,
-        r: u16,
-        c: u16,
-        start_row: u16,
-        start_col: u16,
-        end_row: u16,
-        end_col: u16,
+        r: i16,
+        c: i16,
+        start_row: i16,
+        start_col: i16,
+        end_row: i16,
+        end_col: i16,
         is_range: bool,
     ) -> i32 {
         // eprintln!("Entered update_dependencies for cell: {cell_name} with formula: {formula}");
@@ -680,7 +680,7 @@ impl Spreadsheet {
                     if let Some(dep_cell) =
                         self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
                     {
-                        crate::cell::cell_dep_insert(dep_cell, r as u16, c as u16);
+                        crate::cell::cell_dep_insert(dep_cell, r as i16, c as i16);
                     }
                 }
             }
@@ -751,7 +751,7 @@ impl Spreadsheet {
     //         for dep_key in dependent_keys.iter().rev() {
     //             // Reverse to maintain correct order
     //             let (r, c) = *dep_key;
-    //             let dep_index = ((r - 1) * self.cols as u16 + (c - 1)) as usize;
+    //             let dep_index = ((r - 1) * self.cols as i16 + (c - 1)) as usize;
 
     //             if dep_index < self.cells.len() {
     //                 if let Some(dep_cell) = self.cells.get(dep_index).and_then(|opt| opt.as_ref()) {
@@ -768,7 +768,7 @@ impl Spreadsheet {
 
     // }
 
-    pub fn topo_sort(&self, starting: &Box<Cell>) -> Box<Vec<(u16, u16)>> {
+    pub fn topo_sort(&self, starting: &Box<Cell>) -> Box<Vec<(i16, i16)>> {
         // Create an empty result vector (equivalent to Node_l *head = NULL)
         let mut sorted_nodes = Box::new(Vec::new());
 
@@ -781,7 +781,7 @@ impl Spreadsheet {
 
         // Working stack to simulate recursive DFS with explicit stack
         let mut work_stack = Box::new(Vec::new());
-        work_stack.push(Box::new((starting.row as u16, starting.col as u16)));
+        work_stack.push(Box::new((starting.row as i16, starting.col as i16)));
 
         while let Some(current) = work_stack.pop() {
             let current = *current;
@@ -833,8 +833,8 @@ impl Spreadsheet {
 
     pub fn spreadsheet_set_cell_value(
         &mut self,
-        row: u16,
-        col: u16,
+        row: i16,
+        col: i16,
         rhs: ParsedRHS,
         status_out: &mut String,
     ) {
@@ -1165,7 +1165,7 @@ impl Spreadsheet {
         }
     }
 
-    pub fn is_valid_command(&self, cell_name: &str, formula: &str) -> (bool, u16, u16, ParsedRHS) {
+    pub fn is_valid_command(&self, cell_name: &str, formula: &str) -> (bool, i16, i16, ParsedRHS) {
         // initialise the return value
         let mut ret = (false, 0, 0, ParsedRHS::None);
         if cell_name.is_empty() || formula.is_empty() {

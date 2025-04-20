@@ -9,7 +9,7 @@ pub fn to_csv(sheet: &Spreadsheet) -> Result<String, Box<dyn Error>> {
         if c > 1 {
             csv_content.push(',');
         }
-        csv_content.push_str(&column_to_letter(c));
+        csv_content.push_str(&column_to_letter(c as u16));
     }
     csv_content.push('\n');
 
@@ -48,7 +48,7 @@ pub fn to_xlsx(sheet: &Spreadsheet) -> Result<Vec<u8>, Box<dyn Error>> {
 
     // Add column headers
     for c in 1..=sheet.cols {
-        worksheet.write_string(0, (c - 1) as u16, &column_to_letter(c))?;
+        worksheet.write_string(0, (c - 1) as u16, &column_to_letter(c as u16))?;
     }
 
     // Add cell data

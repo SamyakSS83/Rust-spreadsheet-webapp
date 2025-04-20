@@ -40,7 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let mut start_time = Instant::now(); // Start time for the first command
-    let mut sheet = Spreadsheet::spreadsheet_create(rows as u16, cols as u16).unwrap();
+    let mut sheet = Spreadsheet::spreadsheet_create(rows as i16, cols as i16).unwrap();
     let mut elapsed_time;
     let mut status = String::from("ok");
     let mut show = true;
