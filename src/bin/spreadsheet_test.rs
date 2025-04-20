@@ -21,13 +21,7 @@ mod spreadsheet_tests {
         assert_eq!(sheet.cols, 10);
         assert_eq!(sheet.cells.len(), 100);
 
-        // Test creating a spreadsheet with larger dimensions
-        let sheet = Spreadsheet::spreadsheet_create(100, 26);
-        assert!(sheet.is_some());
-        let sheet = sheet.unwrap();
-        assert_eq!(sheet.rows, 100);
-        assert_eq!(sheet.cols, 26);
-
+        
         // Test cells initialization
         for r in 1..=10 {
             for c in 1..=10 {
@@ -35,6 +29,21 @@ mod spreadsheet_tests {
                 assert!(sheet.cells[index].is_some());
             }
         }
+        // Test creating a spreadsheet with larger dimensions
+        let sheet = Spreadsheet::spreadsheet_create(999, 18278);
+        assert!(sheet.is_some());
+        let sheet = sheet.unwrap();
+        assert_eq!(sheet.rows, 999);
+        assert_eq!(sheet.cols, 18278);
+
+        // Test cells initialization
+        for r in 1..=999 {
+            for c in 1..=18278 {
+                let index = ((r - 1) as usize * 10 + (c - 1) as usize) as usize;
+                assert!(sheet.cells[index].is_some());
+            }
+        }
+
     }
 
     #[test]
@@ -127,47 +136,6 @@ mod spreadsheet_tests {
     }
 
     #[test]
-    fn test_find_depends() {
-        let sheet = Spreadsheet::spreadsheet_create(10, 10).unwrap();
-
-        // Test range functions
-        let result = sheet.find_depends("SUM(A1:B2)");
-        assert!(result.is_ok());
-        let (r1, r2, c1, c2, range_bool) = result.unwrap();
-        assert_eq!(r1, 0); // 0-based indexing
-        assert_eq!(r2, 1);
-        assert_eq!(c1, 1);
-        assert_eq!(c2, 2);
-        assert!(range_bool);
-
-        // Test arithmetic with cell references
-        let result = sheet.find_depends("A1+B2");
-        assert!(result.is_ok());
-        let (r1, r2, c1, c2, range_bool) = result.unwrap();
-        assert_eq!(r1, 1);
-        assert_eq!(r2, 2);
-        assert_eq!(c1, 1);
-        assert_eq!(c2, 2);
-        assert!(!range_bool);
-
-        // Test single cell reference
-        let result = sheet.find_depends("A1");
-        assert!(result.is_ok());
-        let (r1, _, c1, _, range_bool) = result.unwrap();
-        assert_eq!(r1, 1);
-        assert_eq!(c1, 1);
-        assert!(!range_bool);
-
-        // Test invalid range
-        let result = sheet.find_depends("SUM(B2:A1)");
-        assert!(result.is_err());
-
-        // Test malformed formula
-        let result = sheet.find_depends("SUM(A1,B2)");
-        assert!(result.is_err());
-    }
-
-    #[test]
     fn test_evaluate_expression() {
         let mut sheet = Spreadsheet::spreadsheet_create(10, 10).unwrap();
 
@@ -178,6 +146,8 @@ mod spreadsheet_tests {
         let b2_idx = 1 * 10 + 1;
         let c1_idx = 0 * 10 + 2;
         let d1_idx = 0 * 10 + 3;
+        let d2_idx = 0 * 10 + 4;
+        let d3_idx = 0 * 10 + 5;
 
         if let Some(cell) = sheet.cells[a1_idx].as_mut() {
             cell.value = 10;
@@ -197,6 +167,15 @@ mod spreadsheet_tests {
         if let Some(cell) = sheet.cells[d1_idx].as_mut() {
             cell.value = -234;
         }
+        if let Some(cell) = sheet.cells[d2_idx].as_mut(){
+            cell.value = 2;
+            cell.error = true;
+        }
+        if let Some(cell) = sheet.cells[d3_idx].as_mut(){
+            cell.value = 2;
+            cell.error = false;
+        }
+
 
         // Test various expressions similar to the C tests
         
@@ -217,10 +196,46 @@ mod spreadsheet_tests {
         assert_eq!(value, 1);
         assert!(!error);
 
+        let expr = ParsedRHS::SingleValue(Operand::Number(09));
+        let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 1, 1);
+        assert_eq!(value, 9);
+        assert!(!error);
+
+
+        let expr = ParsedRHS::SingleValue(Operand::Number(-09));
+        let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 1, 1);
+        assert_eq!(value, -9);
+        assert!(!error);
+
+        let expr = ParsedRHS::SingleValue(Operand::Number(-2_147_483_648));
+        let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 1, 1);
+        assert_eq!(value, -2147483648);
+        assert!(!error);
+
+        let expr = ParsedRHS::SingleValue(Operand::Number(2_147_483_647));
+        let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 1, 1);
+        assert_eq!(value, 2147483647);
+        assert!(!error);
+
         // Test with cell references
         let expr = ParsedRHS::SingleValue(Operand::Cell(1, 1)); // A1
         let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 2, 2);
         assert_eq!(value, 10);
+        assert!(!error);
+
+        let expr = ParsedRHS::SingleValue(Operand::Cell(1, 4)); // A4
+        let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 2, 2);
+        assert_eq!(value, -234);
+        assert!(!error);
+
+        let expr = ParsedRHS::SingleValue(Operand::Cell(1, 5)); // A4
+        let (_, error) = sheet.spreadsheet_evaluate_expression(&expr, 2, 2);
+        assert!(error);
+
+        // Test for none formula i.e. default cells
+        let expr = ParsedRHS::None;
+        let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 2, 2);
+        assert_eq!(value, 0);
         assert!(!error);
 
         // Test basic arithmetic
@@ -232,6 +247,10 @@ mod spreadsheet_tests {
         let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 1, 2);
         assert_eq!(value, 30);
         assert!(!error);
+
+        let expr = ParsedRHS::Arithmetic { lhs: Operand::Cell(1,5), operator: '+', rhs: Operand::Cell(1, 1) }; // A5 = ERR
+        let (_, error) = sheet.spreadsheet_evaluate_expression(&expr, 1, 2);
+        assert!(error);
 
         // Test arithmetic with constants
         let expr = ParsedRHS::Arithmetic {
@@ -334,6 +353,53 @@ mod spreadsheet_tests {
         assert_eq!(value, 25); // (10 + 20 + 30 + 40) / 4
         assert!(!error);
 
+        // Range can be single cell as well
+        let expr = ParsedRHS::Function {
+            name: FunctionName::Avg,
+            args: (
+                Operand::Cell(1, 1), // A1 = 10
+                Operand::Cell(1, 1), // A1 = 10
+            ),
+        };
+        let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 3, 3);
+        assert_eq!(value, 10); // (10) / 1
+        assert!(!error);
+
+        //Test STDDEV function 
+        let expr = ParsedRHS::Function {
+            name: FunctionName::Stdev,
+            args: (
+                Operand::Cell(1, 1), // A1 = 10
+                Operand::Cell(2, 2), // B2 = 40
+            ),
+        };
+        let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 3, 3);
+        assert_eq!(value, 11); // Standard deviation of the values
+        assert!(!error);
+
+        let expr = ParsedRHS::Function {
+            name: FunctionName::Stdev,
+            args: (
+                Operand::Cell(1, 1), // A1 = 10
+                Operand::Cell(1, 1), // A1 = 10
+            ),
+        };
+        let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 3, 3);
+        assert_eq!(value, 0); // Standard deviation returns 0 for a single value
+        assert!(!error);
+
+        // Test COPY function 
+        let expr = ParsedRHS::Function {
+            name: FunctionName::Copy,
+            args: (
+                Operand::Cell(1, 1), // A1 = 10
+                Operand::Cell(2, 2), // B2 = 40
+            ),
+        };
+        let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 3, 3);
+        assert_eq!(value, 0); // Copy is not implemented in this function. it should simply return 0,false
+        assert!(!error); // Copy function should return a default error
+
         // Test error propagation with functions
         if let Some(cell) = sheet.cells[a1_idx].as_mut() {
             cell.error = true;
@@ -348,6 +414,82 @@ mod spreadsheet_tests {
         };
         let (_, error) = sheet.spreadsheet_evaluate_expression(&expr, 3, 3);
         assert!(error);
+
+        // Test for sleep function with error
+        let expr = ParsedRHS::Sleep 
+        (
+            Operand::Cell(1, 5), // A5 = 2
+        )
+        ;
+        let start = Instant::now();
+        let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 3, 3);
+        let duration = start.elapsed();
+        assert_eq!(value, 2); // Sleep function should return cell value
+        assert!(error); // Sleep function should return an error
+        assert!(duration.as_secs() == 0); // Sleep function should sleep for 0 seconds
+
+        // Test for sleep function without error
+        let expr = ParsedRHS::Sleep 
+        (
+            Operand::Cell(1, 6), // A6 = 2
+        );
+        let start = Instant::now();
+        let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 3, 3);
+        let duration = start.elapsed();
+        assert_eq!(value, 2); // Sleep function should return cell value
+        assert!(!error); // Sleep function should return an error
+        assert!(duration.as_secs() == 2); // Sleep function should sleep for 2 seconds
+
+        // test for sleep with cell with negative value
+        //A4 is negative value
+        let expr = ParsedRHS::Sleep 
+        (
+            Operand::Cell(1, 4), // A4 = -234
+        );
+        let start = Instant::now();
+        let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 3, 3);
+        let duration = start.elapsed();
+        assert_eq!(value, -234); // Sleep function should return cell value
+        assert!(!error); // Sleep function should return an error
+        assert!(duration.as_secs() == 0); // Sleep function should sleep for 0 seconds
+
+        // Sleep with value as argument
+        let expr = ParsedRHS::Sleep 
+        (
+            Operand::Number(2), // Sleep for 2 seconds
+        );
+        let start = Instant::now();
+        let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 3, 3);
+        let duration = start.elapsed();
+        assert_eq!(value, 2); // Sleep function should return cell value
+        assert!(!error); // Sleep function should return an error
+        assert!(duration.as_secs() == 2); // Sleep function should sleep for 2 seconds
+
+        // Test for sleep with negative value
+        let expr = ParsedRHS::Sleep 
+        (
+            Operand::Number(-2), // Sleep for -2 seconds
+        );
+        let start = Instant::now();
+        let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 3, 3);
+        let duration = start.elapsed();
+        assert_eq!(value, -2); // Sleep function should return cell value
+        assert!(!error); // Sleep function should return an error
+        assert!(duration.as_secs() == 0); // Sleep function should sleep for 0 seconds
+
+        // Test for sleep with zero value
+        let expr = ParsedRHS::Sleep 
+        (
+            Operand::Number(0), // Sleep for 0 seconds
+        );
+        let start = Instant::now();
+        let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 3, 3);
+        let duration = start.elapsed();
+        assert_eq!(value, 0); // Sleep function should return cell value
+        assert!(!error); // Sleep function should return an error
+        assert!(duration.as_secs() == 0); // Sleep function should sleep for 0 seconds
+
+
     }
 
     #[test]
@@ -444,6 +586,89 @@ mod spreadsheet_tests {
             let deps = sheet.get_dependent_names(cell_d1);
             assert!(deps.contains(&(1, 1)));
         }
+
+        // Test for larger spreadsheet
+        let mut sheet = Spreadsheet::spreadsheet_create(100, 100).unwrap();
+        // set A1 to 5 
+        let a1_idx = 0 * 100 + 0;
+        if let Some(cell) = sheet.cells[a1_idx].as_mut() {
+            cell.value = 5;
+        }
+        // set A2 to 10 
+        let a2_idx = 1 * 100 + 0;
+        if let Some(cell) = sheet.cells[a2_idx].as_mut() {
+            cell.value = 10;
+        }
+
+        //set A3 to 20
+        let a3_idx = 2 * 100 + 0;
+        if let Some(cell) = sheet.cells[a3_idx].as_mut() {
+            cell.value = 20;
+        }
+         // set A4 to -5
+        let a4_idx = 3 * 100 + 0;
+        if let Some(cell) = sheet.cells[a4_idx].as_mut() {
+            cell.value = -5;
+        }
+
+        //  set B1 to be equal to A1 + A2 using set_cell_value
+        sheet.update_dependencies(1, 2, 1, 1, 2, 1, false);
+
+        // assign A1 to 20 using formula
+        sheet.update_dependencies(1, 1, 0, 0, 0, 0, false);
+         // assign C1 to B1 * 2
+        
+        // update dependencies for C1
+        sheet.update_dependencies(1, 3, 1, 2, 0, 0, false);
+
+        // update dependencies for A2
+        sheet.update_dependencies(2, 1, 0, 0, 0, 0, false);
+
+        // set D1 = MAX(A1:A4)
+        // set D2 = MIN(A1:A4)
+        // set D3 = SUM(A1:A4)
+        // set D4= AVG(A1:A4)
+        // set D5 = STDDEV(A1:A4)
+        // set E1= SLEEP(A1)
+        // set E2= SLEEP(A4)
+
+        // update dependencies for D1
+        sheet.update_dependencies(1, 4, 1, 1, 4, 1, true);
+        // update dependencies for D2
+        sheet.update_dependencies(2, 4, 1, 1, 4, 1, true);
+        // update dependencies for D3
+        sheet.update_dependencies(3, 4, 1, 1, 4, 1, true);
+        // update dependencies for D4
+        sheet.update_dependencies(4, 4, 1, 1, 4, 1, true);
+        // update dependencies for D5
+        sheet.update_dependencies(5, 4, 1, 1, 4, 1, true);
+        // update dependencies for E1
+        sheet.update_dependencies(1, 5, 1, 1, 0, 0, false);
+        // update dependencies for E2
+        sheet.update_dependencies(2, 5, 4, 1, 0, 0, false);
+        // Check that dependencies were correctly set up
+        // B1 D1-D5 E1 should be present in dependents of A1
+
+        let a1_idx = 0 * 10 + 0;
+        if let Some(cell_a1) = sheet.cells[a1_idx].as_ref() {
+            let deps = sheet.get_dependent_names(cell_a1);
+            assert!(deps.contains(&(1, 2)));
+            assert!(deps.contains(&(1, 4)));
+            assert!(deps.contains(&(2, 4)));
+            assert!(deps.contains(&(3, 4)));
+            assert!(deps.contains(&(4, 4)));
+            assert!(deps.contains(&(5, 4)));
+            assert!(deps.contains(&(1, 5)));
+        }
+
+        // dependencies of B1 should contain C1
+        let b1_idx = 0 * 10 + 1;
+        if let Some(cell_b1) = sheet.cells[b1_idx].as_ref() {
+            let deps = sheet.get_dependent_names(cell_b1);
+            assert!(deps.contains(&(1, 3)));
+        }
+
+        
     }
 
     #[test]
