@@ -511,8 +511,8 @@ mod spreadsheet_tests {
         }
 
         // Test cycle detection
-        assert!(sheet.first_step_find_cycle(1, 1, 1, 0, 2, 0, false));
-        assert!(sheet.first_step_find_cycle(1, 2, 1, 0, 1, 0, false));
+        assert!(sheet.first_step_find_cycle((1, 1), (1, 0), (2, 0), false));
+        assert!(sheet.first_step_find_cycle((1, 2), (1, 0), (1, 0), false));
 
         // Test no cycle
         let c1_idx = 0 * 10 + 2;
@@ -528,7 +528,7 @@ mod spreadsheet_tests {
     }
 
     #[test]
-    fn test_dependencies_management() {
+    pub fn test_dependencies_management() {
         let mut sheet = Spreadsheet::spreadsheet_create(10, 10).unwrap();
 
         // Setup A1's formula to depend on B1 and C1
@@ -542,7 +542,7 @@ mod spreadsheet_tests {
         }
 
         // Now update the dependencies
-        sheet.update_dependencies(1, 1, 1, 2, 1, 3, false);
+        sheet.update_dependencies((1, 1), (1, 2), (1, 3), false);
 
         // Check if dependencies were correctly set up
         let b1_idx = 0 * 10 + 1;
@@ -566,7 +566,7 @@ mod spreadsheet_tests {
             cell.formula = ParsedRHS::SingleValue(Operand::Cell(1, 4)); // D1
         }
 
-        sheet.update_dependencies(1, 1, 1, 4, 0, 0, false);
+        sheet.update_dependencies((1, 1), (1, 4), (0, 0), false);
 
         // Check that old dependencies were removed
         if let Some(cell_b1) = sheet.cells[b1_idx].as_ref() {
@@ -612,40 +612,129 @@ mod spreadsheet_tests {
         }
 
         //  set B1 to be equal to A1 + A2 using set_cell_value
-        sheet.update_dependencies(1, 2, 1, 1, 2, 1, false);
+        let b1_idx = 0 * 100 + 1;
+        // set formula of B1 to A1 + A2
+        if let Some(cell) = sheet.cells[b1_idx].as_mut() {
+            cell.formula = ParsedRHS::Arithmetic {
+                lhs: Operand::Cell(1, 1), // A1
+                operator: '+',
+                rhs: Operand::Cell(2, 1), // A2
+            };
+        }
+        sheet.update_dependencies((1, 2), (1, 1), (2, 1), false);
 
         // assign A1 to 20 using formula
-        sheet.update_dependencies(1, 1, 0, 0, 0, 0, false);
+        if let Some(cell) = sheet.cells[a1_idx].as_mut() {
+            cell.formula = ParsedRHS::SingleValue(Operand::Number(20));
+        }
+        sheet.update_dependencies((1, 1), (0, 0), (0, 0), false);
          // assign C1 to B1 * 2
+        let c1_idx = 0 * 100 + 2;
+        if let Some(cell) = sheet.cells[c1_idx].as_mut() {
+            cell.formula = ParsedRHS::Arithmetic {
+                lhs: Operand::Cell(1, 2), // B1
+                operator: '*',
+                rhs: Operand::Number(2),
+            };
+        }
         
         // update dependencies for C1
-        sheet.update_dependencies(1, 3, 1, 2, 0, 0, false);
+        sheet.update_dependencies((1, 3), (1, 2), (0, 0), false);
 
         // update dependencies for A2
-        sheet.update_dependencies(2, 1, 0, 0, 0, 0, false);
+        // assign A2 to 10 using formula
+        if let Some(cell) = sheet.cells[a2_idx].as_mut() {
+            cell.formula = ParsedRHS::SingleValue(Operand::Number(10));
+        }
+        sheet.update_dependencies((2, 1), (0, 0), (0, 0), false);
 
         // set D1 = MAX(A1:A4)
+        // set formula of D1
+        let d1_idx = 0 * 100 + 3;
+        if let Some(cell) = sheet.cells[d1_idx].as_mut() {
+            cell.formula = ParsedRHS::Function {
+                name: FunctionName::Max,
+                args: (
+                    Operand::Cell(1, 1), // A1
+                    Operand::Cell(4, 1), // A4
+                ),
+            };
+        }
         // set D2 = MIN(A1:A4)
+        // set formula of D2
+        let d2_idx = 1 * 100 + 3;
+        if let Some(cell) = sheet.cells[d2_idx].as_mut() {
+            cell.formula = ParsedRHS::Function {
+                name: FunctionName::Min,
+                args: (
+                    Operand::Cell(1, 1), // A1
+                    Operand::Cell(4, 1), // A4
+                ),
+            };
+        }
         // set D3 = SUM(A1:A4)
+        // set formula of D3
+        let d3_idx = 2 * 100 + 3;
+        if let Some(cell) = sheet.cells[d3_idx].as_mut() {
+            cell.formula = ParsedRHS::Function {
+                name: FunctionName::Sum,
+                args: (
+                    Operand::Cell(1, 1), // A1
+                    Operand::Cell(4, 1), // A4
+                ),
+            };
+        }
         // set D4= AVG(A1:A4)
+        // set formula of D4
+        let d4_idx = 3 * 100 + 3;
+        if let Some(cell) = sheet.cells[d4_idx].as_mut() {
+            cell.formula = ParsedRHS::Function {
+                name: FunctionName::Avg,
+                args: (
+                    Operand::Cell(1, 1), // A1
+                    Operand::Cell(4, 1), // A4
+                ),
+            };
+        }
         // set D5 = STDDEV(A1:A4)
+        // set formula of D5
+        let d5_idx = 4 * 100 + 3;
+        if let Some(cell) = sheet.cells[d5_idx].as_mut() {
+            cell.formula = ParsedRHS::Function {
+                name: FunctionName::Stdev,
+                args: (
+                    Operand::Cell(1, 1), // A1
+                    Operand::Cell(4, 1), // A4
+                ),
+            };
+        }
         // set E1= SLEEP(A1)
+        // set formula of E1
+        let e1_idx = 0 * 100 + 4;
+        if let Some(cell) = sheet.cells[e1_idx].as_mut() {
+            cell.formula = ParsedRHS::Sleep(Operand::Cell(1, 1)); // A1
+        }
         // set E2= SLEEP(A4)
+        // set formula of E2
+        let e2_idx = 1 * 100 + 4;
+        if let Some(cell) = sheet.cells[e2_idx].as_mut() {
+            cell.formula = ParsedRHS::Sleep(Operand::Cell(4, 1)); // A4
+        }
 
         // update dependencies for D1
-        sheet.update_dependencies(1, 4, 1, 1, 4, 1, true);
+        sheet.update_dependencies((1, 4), (1, 1), (4, 1), true);
         // update dependencies for D2
-        sheet.update_dependencies(2, 4, 1, 1, 4, 1, true);
+        sheet.update_dependencies((2, 4), (1, 1), (4, 1), true);
         // update dependencies for D3
-        sheet.update_dependencies(3, 4, 1, 1, 4, 1, true);
+        sheet.update_dependencies((3, 4), (1, 1), (4, 1), true);
         // update dependencies for D4
-        sheet.update_dependencies(4, 4, 1, 1, 4, 1, true);
+        sheet.update_dependencies((4, 4), (1, 1), (4, 1), true);
         // update dependencies for D5
-        sheet.update_dependencies(5, 4, 1, 1, 4, 1, true);
+        sheet.update_dependencies((5, 4), (1, 1), (4, 1), true);
         // update dependencies for E1
-        sheet.update_dependencies(1, 5, 1, 1, 0, 0, false);
+        sheet.update_dependencies((1, 5), (1, 1), (0, 0), false);
         // update dependencies for E2
-        sheet.update_dependencies(2, 5, 4, 1, 0, 0, false);
+        sheet.update_dependencies((2, 5), (4, 1), (0, 0), false);
         // Check that dependencies were correctly set up
         // B1 D1-D5 E1 should be present in dependents of A1
 
@@ -668,6 +757,81 @@ mod spreadsheet_tests {
             assert!(deps.contains(&(1, 3)));
         }
 
+
+        // test for the remove_old_dependents function
+        // remove old dependents of B1 . now B1 should not be present in A1's dependents
+        sheet.remove_old_dependents(1, 2);  //B1
+        if let Some(cell_a1) = sheet.cells[a1_idx].as_ref() {
+            let deps = sheet.get_dependent_names(cell_a1);
+            assert!(!deps.contains(&(1, 2)));
+        }
+
+        // remove old dependents for E2 , now E2 should not be present in A4's dependents
+        sheet.remove_old_dependents(2, 5);
+        if let Some(cell_a4) = sheet.cells[a4_idx].as_ref() {
+            let deps = sheet.get_dependent_names(cell_a4);
+            assert!(!deps.contains(&(2, 5)));
+        }
+
+        // remove old dependents for D1 , now D1 should not be present in A1's dependents
+        sheet.remove_old_dependents(1, 4);
+        if let Some(cell_a1) = sheet.cells[a1_idx].as_ref() {
+            let deps = sheet.get_dependent_names(cell_a1);
+            assert!(!deps.contains(&(1, 4)));
+        }
+
+        // remove old dependents for D2 , now D2 should not be present in A1's dependents
+        sheet.remove_old_dependents(2, 4);
+        if let Some(cell_a1) = sheet.cells[a1_idx].as_ref() {
+            let deps = sheet.get_dependent_names(cell_a1);
+            assert!(!deps.contains(&(2, 4)));
+        }
+
+        // remove old dependents for D3 , now D3 should not be present in A1's dependents
+        sheet.remove_old_dependents(3, 4);
+        if let Some(cell_a1) = sheet.cells[a1_idx].as_ref() {
+            let deps = sheet.get_dependent_names(cell_a1);
+            assert!(!deps.contains(&(3, 4)));
+        }
+
+        // remove old dependents for D4 , now D4 should not be present in A1's dependents
+        sheet.remove_old_dependents(4, 4);
+        if let Some(cell_a1) = sheet.cells[a1_idx].as_ref() {
+            let deps = sheet.get_dependent_names(cell_a1);
+            assert!(!deps.contains(&(4, 4)));
+        }
+
+        // remove old dependents for D5 , now D5 should not be present in A1's dependents
+        sheet.remove_old_dependents(5, 4);
+        if let Some(cell_a1) = sheet.cells[a1_idx].as_ref() {
+            let deps = sheet.get_dependent_names(cell_a1);
+            assert!(!deps.contains(&(5, 4)));
+        }
+
+        // remove dependents for A1. Now A1 should not be present in any cell's dependents
+        sheet.remove_old_dependents(1, 1);
+        if let Some(cell_b1) = sheet.cells[b1_idx].as_ref() {
+            let deps = sheet.get_dependent_names(cell_b1);
+            assert!(!deps.contains(&(1, 1)));
+        }
+
+        // Single value operand cell is left. check that as well
+        // first assign A1 to A2 let's say
+        if let Some(cell_a1) = sheet.cells[a1_idx].as_mut() {
+            cell_a1.formula = ParsedRHS::SingleValue(Operand::Cell(2, 1)); // A2
+        }
+        sheet.update_dependencies((1, 1), (2, 1), (0, 0), false);
+        // check that A1 is present in A2's dependents
+        if let Some(cell_a2) = sheet.cells[a2_idx].as_ref() {
+            let deps = sheet.get_dependent_names(cell_a2);
+            assert!(deps.contains(&(1, 1)));
+        }
+        // remove old dependents for A1 , now A1 should not be present in A2's dependents
+        sheet.remove_old_dependents(1, 1);
+        if let Some(cell_a2) = sheet.cells[a2_idx].as_ref() {
+            let deps = sheet.get_dependent_names(cell_a2);
+            assert!(!deps.contains(&(1, 1)));
+        }
         
     }
 
@@ -1028,4 +1192,7 @@ mod spreadsheet_tests {
     }
 }
 
-fn main() {}
+fn main() {
+   
+
+}

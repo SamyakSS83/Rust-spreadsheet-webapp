@@ -620,7 +620,14 @@ impl Spreadsheet {
                     crate::cell::cell_dep_remove(dep_cell, r, c);
                 }
             }
-            _ => {}
+            ParsedRHS::Sleep(Operand::Cell(dep_r, dep_c)) => {
+                let dep_index = (dep_r - 1) as usize * self.cols as usize + (dep_c - 1) as usize;
+
+                if let Some(dep_cell) = self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut()) {
+                    crate::cell::cell_dep_remove(dep_cell, r, c);
+                }
+            }
+            _=> {}
         }
     }
 
