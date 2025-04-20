@@ -504,6 +504,7 @@ mod spreadsheet_tests {
         if let Some(cell_a1) = sheet.cells[a1_idx].as_mut() {
             cell_dep_insert(cell_a1, 1, 2);
         }
+        assert!(sheet.first_step_find_cycle((1, 1), (1, 2), (0, 0), false));
 
         // Then, modify B1 to depend on A1 (in a separate step)
         if let Some(cell_b1) = sheet.cells[b1_idx].as_mut() {
@@ -511,12 +512,10 @@ mod spreadsheet_tests {
         }
 
         // Test cycle detection
-        assert!(sheet.first_step_find_cycle((1, 1), (1, 0), (2, 0), false));
-        assert!(sheet.first_step_find_cycle((1, 2), (1, 0), (1, 0), false));
+        assert!(sheet.first_step_find_cycle((1, 2), (1, 1), (0, 0), false));
 
         // Test no cycle
         let c1_idx = 0 * 10 + 2;
-        let c2_idx = 1 * 10 + 2;
 
         // First, modify C1 to depend on C2
         if let Some(cell_c1) = sheet.cells[c1_idx].as_mut() {
@@ -524,7 +523,18 @@ mod spreadsheet_tests {
         }
 
         // Test no cycle detection
-        // assert!(!sheet.first_step_find_cycle(1, 3, 2, 0, 3, 0, false));
+        assert!(!sheet.first_step_find_cycle((1, 3), (1, 1), (1, 2), false));
+
+        // Test for is_range = true 
+        // add A1 to dependencies of D1. i.e. changing D1 will change A1
+        let d1_idx = 0 * 10 + 3;
+        if let Some(cell_d1) = sheet.cells[d1_idx].as_mut() {
+            cell_dep_insert(cell_d1, 1, 1);
+        }
+
+        // Test cycle detection
+        assert!(sheet.first_step_find_cycle((1, 4), (1, 1), (2, 2), true));
+
     }
 
     #[test]
