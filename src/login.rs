@@ -73,7 +73,7 @@ pub fn init_database() -> std::io::Result<()> {
     
     // Create Admin folder
     let admin_dir = Path::new(DATABASE_DIR).join("Admin");
-    if (!admin_dir.exists()) {
+    if !admin_dir.exists() {
         create_dir_all(&admin_dir)?;
     }
     
