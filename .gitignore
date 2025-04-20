@@ -2,3 +2,4 @@
 /files
 *.data.*
 .DS_Store
+/database

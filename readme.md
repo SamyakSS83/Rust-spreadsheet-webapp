@@ -26,3 +26,9 @@ write is_valid_command
 write spreadsheet_display
 reduce memory
 reduce time
+
+To Do: 20 april
+
+write tests for spreadsheet and cell, fix average: Shivankur and Vanshika
+
+fix some bugs in website: Samyak

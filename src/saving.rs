@@ -1,3 +1,5 @@
+#![cfg(not(tarpaulin_include))]
+
 use bincode::{deserialize_from, serialize_into};
 use flate2::Compression;
 use flate2::read::GzDecoder;
