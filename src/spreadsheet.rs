@@ -807,7 +807,6 @@ impl Spreadsheet {
                         // If we have an unvisited dependent, we need to process it first
                         // if let Some((r, c)) = self.spreadsheet_parse_cell_name(dep_key) {
                         let (r, c) = *dep_key;
-                        let dep_index = ((r - 1) * self.cols + (c - 1)) as usize;
 
                         // Push current cell back to work stack
                         work_stack.push(Box::new(current));
@@ -885,7 +884,6 @@ impl Spreadsheet {
             let mut cnter = 0;
             for r in start_row..=end_row {
                 for c in start_col..=end_col {
-                    let dest_name = Self::get_cell_name(r, c);
                     self.update_dependencies(r, c, 0, 0, 0, 0, false);
                     let dest_index = ((r as isize + row_offset - 1) * self.cols as isize
                         + (c as isize + col_offset - 1))
@@ -979,10 +977,6 @@ impl Spreadsheet {
         // println!("find_depends took {:?}", start_time.elapsed().as_secs_f64());
         // new
         // Check for cycles
-
-        // new
-        let start_time = Instant::now();
-        // new
         if self.first_step_find_cycle(row, col, r1, r2, c1, c2, is_range) {
             *status_out = "Cycle Detected".to_string();
             return;
@@ -996,10 +990,6 @@ impl Spreadsheet {
         // new
 
         // Update dependencies
-
-        // new
-        let start_time = Instant::now();
-        // new
         self.update_dependencies(row, col, r1, c1, r2, c2, is_range);
 
         // println!("cell dependency of A1 are : {:?}", self.cells[0].as_ref().unwrap().dependents);
@@ -1042,9 +1032,6 @@ impl Spreadsheet {
         };
         // Perform topological sort
 
-        // new
-        let start_time = Instant::now();
-        // new
         let sorted_cells = self.topo_sort(cell);
         // println!("sorted cells {:?}", sorted_cells);
         // new
@@ -1058,9 +1045,6 @@ impl Spreadsheet {
 
         // Evaluate expressions for all cells in topological order
 
-        // new
-        let start_time = Instant::now();
-        // new
         for (row, col) in sorted_cells.iter() {
             // Calculate index for the current cell in topological order
             let sorted_index =
@@ -1105,19 +1089,8 @@ impl Spreadsheet {
         // iterate through undo_stack extract cell name --> update dependencies --> set value
         let mut undo_stack = self.undo_stack.clone();
         self.undo_stack.clear();
-        for i in 0..undo_stack.len() {
+        for _ in 0..undo_stack.len() {
             let (formula_new, row, col) = undo_stack.pop().unwrap();
-            let cell_name = Self::get_cell_name(row, col);
-            // add this to redo_stack
-            // get the current formula and value
-            // get immutable reference of cell
-            let index = ((row - 1) as usize * self.cols as usize + (col - 1) as usize) as usize;
-            let cell = match self.cells.get(index).and_then(|opt| opt.as_ref()) {
-                Some(cell) => cell,
-                None => {
-                    continue; // Skip if cell doesn't exist
-                }
-            };
 
             self.spreadsheet_set_cell_value(row, col, formula_new, status_out);
         }
@@ -1232,7 +1205,7 @@ impl Spreadsheet {
                             //     ret.3 = ParsedRHS::Function { name: FunctionName::, args: (Operand::Cell(start_row as usize,start_col as usize),Operand::Cell(end_row as usize, end_col as usize)) };
                             //     return ret;
                             // }
-                            if let Some(fname) = FunctionName::from_str(&func) {
+                            if let Some(fname) = FunctionName::from_str(func) {
                                 if func == "COPY" {
                                     let dest_row = ret.1;
                                     let dest_col = ret.2;
