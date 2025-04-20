@@ -69,7 +69,7 @@ struct GraphRequest {
     graph_type: String,
 }
 
-pub async fn run(rows: u16, cols: u16) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run(rows: i16, cols: i16) -> Result<(), Box<dyn std::error::Error>> {
     // Initialize the database
     login::init_database()?;
 
@@ -175,7 +175,7 @@ async fn serve_sheet(
 ) -> Html<&'static str> {
     if let (Some(rows), Some(cols)) = (params.rows, params.cols) {
         if rows > 0 && rows <= 1000 && cols > 0 && cols <= 18278 {
-            let new_sheet = Spreadsheet::spreadsheet_create(rows as u16, cols as u16)
+            let new_sheet = Spreadsheet::spreadsheet_create(rows as i16, cols as i16)
                 .expect("Failed to create spreadsheet with specified dimensions");
 
             let mut current_sheet = state.sheet.lock().unwrap();
