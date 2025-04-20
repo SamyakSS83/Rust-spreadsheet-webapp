@@ -76,6 +76,4 @@
 
 //     println!("All tests completed.");
 // }
-fn main(){
-    
-}
+fn main() {}

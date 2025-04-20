@@ -336,7 +336,7 @@ impl Spreadsheet {
             }
             ParsedRHS::Sleep(op) => {
                 // Handle sleep function here
-                let val ;
+                let val;
                 let error = false;
 
                 match op {
@@ -596,7 +596,11 @@ impl Spreadsheet {
                 }
             }
             // Other patterns with the same fix...
-            ParsedRHS::Arithmetic { lhs, operator:_, rhs } => {
+            ParsedRHS::Arithmetic {
+                lhs,
+                operator: _,
+                rhs,
+            } => {
                 // Handle the left operand
                 if let Operand::Cell(dep_r, dep_c) = lhs {
                     let dep_index =
@@ -884,9 +888,14 @@ impl Spreadsheet {
                     let dest_name = Self::get_cell_name(r, c);
                     self.update_dependencies(r, c, 0, 0, 0, 0, false);
                     let dest_index = ((r as isize + row_offset - 1) * self.cols as isize
-                    + (c as isize + col_offset - 1))
-                    as usize;
-                    println!("start row {} col {} : {:?} ", r , c, self.cells[dest_index].as_ref().unwrap().dependents);
+                        + (c as isize + col_offset - 1))
+                        as usize;
+                    println!(
+                        "start row {} col {} : {:?} ",
+                        r,
+                        c,
+                        self.cells[dest_index].as_ref().unwrap().dependents
+                    );
                     if dest_index < self.cells.len() {
                         if let Some(dest_cell) =
                             self.cells.get_mut(dest_index).and_then(|opt| opt.as_mut())

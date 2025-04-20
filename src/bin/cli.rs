@@ -1,6 +1,6 @@
 #![cfg(not(tarpaulin_include))]
 
-use cop::spreadsheet::{ParsedRHS, Spreadsheet};
+use cop::spreadsheet::Spreadsheet;
 
 // use crate::spreadsheet::{Spreadsheet, Spreadsheet as SpreadsheetTrait};
 use std::env;
@@ -34,7 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let rows: i32 = args[1].parse().unwrap_or(0);
     let cols: i32 = args[2].parse().unwrap_or(0);
 
-    if rows < 1 || rows > 999 || cols < 1 || cols > 18278 {
+    if !(1..=999).contains(&rows) || !(1..=18278).contains(&cols) {
         eprintln!("Error: Invalid dimensions");
         return Ok(());
     }
@@ -118,11 +118,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             sheet.undo_stack.clear();
             let cell_name = &command[..equal_pos];
             let formula = &command[equal_pos + 1..];
-            let (valid,row,col,rhs) = sheet.is_valid_command(cell_name, formula);
+            let (valid, row, col, rhs) = sheet.is_valid_command(cell_name, formula);
             if !valid {
                 status = String::from("invalid command");
             } else {
-                sheet.spreadsheet_set_cell_value(row,col,rhs, &mut status);
+                sheet.spreadsheet_set_cell_value(row, col, rhs, &mut status);
             }
         } else if command == "UNDO" {
             if sheet.undo_stack.is_empty() {

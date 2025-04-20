@@ -10,7 +10,7 @@ pub struct Cell {
     pub error: bool,
     pub value: i32,
     // pub formula: Option<String>,
-    pub formula : ParsedRHS,
+    pub formula: ParsedRHS,
     pub dependents_initialised: u16,
     pub dependents: Dependents,
 }
