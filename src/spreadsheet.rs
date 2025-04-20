@@ -2,6 +2,17 @@ use crate::cell::{Cell, cell_create};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 // use std::time::Instant;
+use lazy_static::lazy_static;
+use regex::Regex;
+
+// Pre-compile regex patterns
+lazy_static! {
+    static ref FUNC_REGEX: Regex = Regex::new(r"^([A-Za-z]+)\((.*)\)$").unwrap();
+    static ref ARITH_EXPR_REGEX: Regex = Regex::new(
+        r"^(([+-]?[0-9]+)|([A-Za-z]+[0-9]+))([+\-*/])(([+-]?[0-9]+)|([A-Za-z]+[0-9]+))$"
+    )
+    .unwrap();
+}
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Spreadsheet {
@@ -257,8 +268,7 @@ impl Spreadsheet {
 
                 for i in r1..=r2 {
                     for j in c1..=c2 {
-                        let index =
-                            (i - 1) as usize * self.cols as usize + (j - 1) as usize;
+                        let index = (i - 1) as usize * self.cols as usize + (j - 1) as usize;
                         if index < self.cells.len() {
                             if let Some(ref c) = self.cells[index] {
                                 if c.error {
@@ -342,8 +352,7 @@ impl Spreadsheet {
                         val = *n;
                     }
                     Operand::Cell(r, c) => {
-                        let index =
-                            (r - 1) as usize * self.cols as usize + (c - 1) as usize;
+                        let index = (r - 1) as usize * self.cols as usize + (c - 1) as usize;
                         if let Some(cell) = self.cells.get(index).and_then(|c| c.as_ref()) {
                             val = cell.value;
                             if cell.error {
@@ -367,8 +376,7 @@ impl Spreadsheet {
                 let (lhs_val, lhs_err) = match lhs {
                     Operand::Number(n) => (*n, false),
                     Operand::Cell(r, c) => {
-                        let index =
-                            (r - 1) as usize * self.cols as usize + (c - 1) as usize;
+                        let index = (r - 1) as usize * self.cols as usize + (c - 1) as usize;
                         self.cells[index]
                             .as_ref()
                             .map_or((0, true), |cell| (cell.value, cell.error))
@@ -378,8 +386,7 @@ impl Spreadsheet {
                 let (rhs_val, rhs_err) = match rhs {
                     Operand::Number(n) => (*n, false),
                     Operand::Cell(r, c) => {
-                        let index =
-                            (r - 1) as usize * self.cols as usize + (c - 1) as usize;
+                        let index = (r - 1) as usize * self.cols as usize + (c - 1) as usize;
                         self.cells[index]
                             .as_ref()
                             .map_or((0, true), |cell| (cell.value, cell.error))
@@ -415,8 +422,7 @@ impl Spreadsheet {
                 // Handle single value expression here
                 match num {
                     Operand::Cell(r, c) => {
-                        let index =
-                            (r - 1) as usize * self.cols as usize + (c - 1) as usize;
+                        let index = (r - 1) as usize * self.cols as usize + (c - 1) as usize;
                         self.cells[index]
                             .as_ref()
                             .map_or((0, false), |cell| (cell.value, cell.error))
@@ -442,7 +448,6 @@ impl Spreadsheet {
         stack: &mut Vec<&'a Box<Cell>>,
     ) -> bool {
         while let Some(my_node) = stack.pop() {
-
             // Generate cell name for the current node
             // let cell_name = Self::get_cell_name(my_node.row as i32, my_node.col as i32);
 
@@ -457,10 +462,7 @@ impl Spreadsheet {
             // Check if the cell is part of the target range
             let in_range = if range_bool {
                 // For range functions (SUM, AVG, etc.)
-                my_node.row >= r1
-                    && my_node.row <= r2
-                    && my_node.col >= c1
-                    && my_node.col <= c2
+                my_node.row >= r1 && my_node.row <= r2 && my_node.col >= c1 && my_node.col <= c2
             } else {
                 // For direct cell references
                 (my_node.row == r1 && my_node.col == c1) || (my_node.row == r2 && my_node.col == c2)
@@ -478,8 +480,7 @@ impl Spreadsheet {
                     if !visited.contains(dependent_name) {
                         let r = dependent_name.0;
                         let c = dependent_name.1;
-                        let index =
-                            (r - 1) as usize * self.cols as usize + (c - 1) as usize;
+                        let index = (r - 1) as usize * self.cols as usize + (c - 1) as usize;
                         if index < self.cells.len() {
                             if let Some(ref neighbor_node) = self.cells[index] {
                                 stack.push(neighbor_node);
@@ -577,7 +578,8 @@ impl Spreadsheet {
                     // Remove our cell as a dependent from each cell in the range
                     for dep_r in start_row..=end_row {
                         for dep_c in start_col..=end_col {
-                            let dep_index = (dep_r - 1) as usize * self.cols as usize + (dep_c - 1) as usize;
+                            let dep_index =
+                                (dep_r - 1) as usize * self.cols as usize + (dep_c - 1) as usize;
 
                             if let Some(dep_cell) =
                                 self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
@@ -620,15 +622,11 @@ impl Spreadsheet {
             }
             // Handle single value case too
             ParsedRHS::SingleValue(Operand::Cell(dep_r, dep_c)) => {
-                let dep_index =
-                    (dep_r - 1) as usize * self.cols as usize + (dep_c - 1) as usize;
+                let dep_index = (dep_r - 1) as usize * self.cols as usize + (dep_c - 1) as usize;
 
-                if let Some(dep_cell) =
-                    self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
-                {
+                if let Some(dep_cell) = self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut()) {
                     crate::cell::cell_dep_remove(dep_cell, r, c);
                 }
-                
             }
             _ => {}
         }
@@ -668,8 +666,7 @@ impl Spreadsheet {
             // Iterate over the range and update dependencies.
             for r_it in start_row..=end_row {
                 for c_it in start_col..=end_col {
-                    let dep_index =
-                        (r_it - 1) as usize * self.cols as usize + (c_it - 1) as usize;
+                    let dep_index = (r_it - 1) as usize * self.cols as usize + (c_it - 1) as usize;
                     if let Some(dep_cell) =
                         self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
                     {
@@ -679,8 +676,8 @@ impl Spreadsheet {
             }
         } else {
             if start_row > 0 {
-                let dep_index = (start_row - 1) as usize * self.cols as usize
-                    + (start_col - 1) as usize;
+                let dep_index =
+                    (start_row - 1) as usize * self.cols as usize + (start_col - 1) as usize;
                 if let Some(dep_cell) = self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut()) {
                     crate::cell::cell_dep_insert(dep_cell, r, c);
                 }
@@ -695,71 +692,6 @@ impl Spreadsheet {
         }
         0
     }
-
-    // pub fn topo_sort(&self, starting: &Box<Cell>) -> Vec<(u32, u32)> {
-    //     // Create an empty result vector for the sorted nodes
-    //     let mut sorted_nodes = Vec::new();
-
-    //     // Track visited cells using a BTreeSet
-    //     let mut visited = BTreeSet::new();
-
-    //     // Track temporarily marked nodes (for cycle detection)
-    //     let mut temp_marked = BTreeSet::new();
-
-    //     // Use a stack for non-recursive DFS implementation to avoid stack overflow
-    //     let mut stack = vec![(starting, false)]; // (node, processed_children)
-
-    //     while let Some((node, processed)) = stack.pop() {
-    //         let key = (node.row, node.col);
-
-    //         // If already in final result, we're done with this node
-    //         if visited.contains(&key) {
-    //             continue;
-    //         }
-
-    //         // If we've processed all children, add this node to result
-    //         if processed {
-    //             visited.insert(key);
-    //             sorted_nodes.push((node.row as u32, node.col as u32));
-    //             temp_marked.remove(&key);
-    //             continue;
-    //         }
-
-    //         // Check for cycles (node is currently being processed)
-    //         if temp_marked.contains(&key) {
-    //             // Skip this node - cycle detected but already handled
-    //             continue;
-    //         }
-
-    //         // Mark temporarily to detect cycles
-    //         temp_marked.insert(key);
-
-    //         // Add node back to stack, marked as processed
-    //         stack.push((node, true));
-
-    //         // Get all dependent cells efficiently
-    //         let dependent_keys = self.get_dependent_names(node);
-
-    //         // Process all dependents - add them to stack
-    //         for dep_key in dependent_keys.iter().rev() {
-    //             // Reverse to maintain correct order
-    //             let (r, c) = *dep_key;
-    //             let dep_index = ((r - 1) * self.cols as i16 + (c - 1)) as usize;
-
-    //             if dep_index < self.cells.len() {
-    //                 if let Some(dep_cell) = self.cells.get(dep_index).and_then(|opt| opt.as_ref()) {
-    //                     if !visited.contains(&(r, c)) {
-    //                         stack.push((dep_cell, false));
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //     }
-    //     // return the sorted nodes in reverse order
-    //     sorted_nodes.reverse();
-    //     sorted_nodes
-
-    // }
 
     pub fn topo_sort(&self, starting: &Box<Cell>) -> Box<Vec<(i16, i16)>> {
         // Create an empty result vector (equivalent to Node_l *head = NULL)
@@ -788,8 +720,7 @@ impl Spreadsheet {
             }
 
             // Get dependents of current cell
-            let index =
-                (current.0 - 1) as usize * self.cols as usize + (current.1 - 1) as usize;
+            let index = (current.0 - 1) as usize * self.cols as usize + (current.1 - 1) as usize;
             if let Some(cell) = self.cells.get(index).and_then(|opt| opt.as_ref()) {
                 let dependent_keys = self.get_dependent_names(cell);
                 let mut all_dependents_visited = true;
@@ -1034,8 +965,7 @@ impl Spreadsheet {
 
         for (row, col) in sorted_cells.iter() {
             // Calculate index for the current cell in topological order
-            let sorted_index =
-                (*row - 1) as usize * self.cols as usize + (*col - 1) as usize;
+            let sorted_index = (*row - 1) as usize * self.cols as usize + (*col - 1) as usize;
 
             // Get formula from the sorted cell
             // let formula = match self.cells.get(sorted_index).and_then(|opt| opt.as_ref()) {
@@ -1150,8 +1080,7 @@ impl Spreadsheet {
         }
 
         // Check for function call pattern: FUNC(...)
-        let func_regex = regex::Regex::new(r"^([A-Za-z]+)\((.*)\)$").unwrap();
-        if let Some(captures) = func_regex.captures(formula) {
+        if let Some(captures) = FUNC_REGEX.captures(formula) {
             let func = captures.get(1).unwrap().as_str();
             let args = captures.get(2).unwrap().as_str();
 
@@ -1271,12 +1200,8 @@ impl Spreadsheet {
         // let mut oprnd1 = Operand::Number(0);
         // let mut oprnd2 = Operand::Number(0);
         // Use regex to separate expression into components
-        let expr_regex = regex::Regex::new(
-            r"^(([+-]?[0-9]+)|([A-Za-z]+[0-9]+))([+\-*/])(([+-]?[0-9]+)|([A-Za-z]+[0-9]+))$",
-        )
-        .unwrap();
 
-        if let Some(captures) = expr_regex.captures(&expr) {
+        if let Some(captures) = ARITH_EXPR_REGEX.captures(&expr) {
             let first_operand = captures.get(1).unwrap().as_str();
             let operator = captures.get(4).unwrap().as_str();
             let second_operand = captures.get(5).unwrap().as_str();
