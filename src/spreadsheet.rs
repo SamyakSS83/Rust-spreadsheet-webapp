@@ -443,7 +443,7 @@ impl Spreadsheet {
         (c1, c2): (i16, i16),
         range_bool: bool,
         visited: &mut BTreeSet<(i16, i16)>,
-        stack: &mut Vec<&'a Box<Cell>>,
+        stack: &mut Vec<&'a Cell>,
     ) -> bool {
         while let Some(my_node) = stack.pop() {
             // Generate cell name for the current node
@@ -494,7 +494,7 @@ impl Spreadsheet {
     }
 
     // Count the number of dependent cells
-    pub fn count_dependent_cells(&self, cell: &Box<Cell>) -> usize {
+    pub fn count_dependent_cells(&self, cell: &Cell) -> usize {
         match &cell.dependents {
             crate::cell::Dependents::Vector(vec) => vec.len(),
             crate::cell::Dependents::Set(set) => set.len(),
@@ -503,7 +503,7 @@ impl Spreadsheet {
     }
 
     // Helper method for the rec_find_cycle_using_stack function - simplifies dependent collection
-    pub fn get_dependent_names<'a>(&self, cell: &'a Box<Cell>) -> Vec<(i16, i16)> {
+    pub fn get_dependent_names(&self, cell: &Cell) -> Vec<(i16, i16)> {
         match &cell.dependents {
             crate::cell::Dependents::Vector(vec) => vec.clone(),
             crate::cell::Dependents::Set(set) => set.iter().cloned().collect(),
@@ -536,10 +536,7 @@ impl Spreadsheet {
 
         // Create a visited set and stack for cycle detection
         let mut visited = BTreeSet::new();
-        let mut stack = Vec::new();
-
-        // Start DFS from the current cell
-        stack.push(start_node);
+        let mut stack = vec![&**start_node];
 
         // Call the recursive helper to find cycles
         self.rec_find_cycle_using_stack((r1, r2), (c1, c2), range_bool, &mut visited, &mut stack)
@@ -685,7 +682,7 @@ impl Spreadsheet {
         0
     }
 
-    pub fn topo_sort(&self, starting: &Box<Cell>) -> Box<Vec<(i16, i16)>> {
+    pub fn topo_sort(&self, starting: &Cell) -> Box<Vec<(i16, i16)>> {
         // Create an empty result vector (equivalent to Node_l *head = NULL)
         let mut sorted_nodes = Box::new(Vec::new());
 
@@ -1193,7 +1190,7 @@ impl Spreadsheet {
         // let mut oprnd2 = Operand::Number(0);
         // Use regex to separate expression into components
 
-        if let Some(captures) = ARITH_EXPR_REGEX.captures(&expr) {
+        if let Some(captures) = ARITH_EXPR_REGEX.captures(expr) {
             let first_operand = captures.get(1).unwrap().as_str();
             let operator = captures.get(4).unwrap().as_str();
             let second_operand = captures.get(5).unwrap().as_str();
