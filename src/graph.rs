@@ -1,3 +1,4 @@
+#![cfg(not(tarpaulin_include))]
 use crate::spreadsheet::Spreadsheet;
 use plotters::prelude::*;
 use std::fs::remove_file;

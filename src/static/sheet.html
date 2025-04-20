@@ -196,6 +196,48 @@
         #graph-button:hover {
             background-color: #de91d4;
         }
+
+        .dropdown {
+            position: relative;
+            display: inline-block;
+        }
+
+        .dropdown-content {
+            position: absolute;
+            background-color: #f9f9f9;
+            min-width: 120px;
+            box-shadow: 0px 8px 16px 0px rgba(0, 0, 0, 0.2);
+            z-index: 1;
+            border-radius: 4px;
+            top: 100%;
+            right: 0;
+        }
+
+        .dropdown-content a {
+            color: black;
+            padding: 8px 12px;
+            text-decoration: none;
+            display: block;
+            font-size: 14px;
+        }
+
+        .dropdown-content a:hover {
+            background-color: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        #download-button {
+            background-color: #5c6bc0;
+            color: white;
+        }
+
+        #download-button:hover {
+            background-color: #3f51b5;
+        }
+
+        .hidden {
+            display: none !important;
+        }
     </style>
 </head>
 
@@ -207,6 +249,13 @@
             <input type="text" id="formula-bar" placeholder="Enter formula here...">
             <div id="actions">
                 <button id="graph-button" class="action-button">Graph</button>
+                <div class="dropdown">
+                    <button id="download-button" class="action-button">Download</button>
+                    <div id="download-dropdown" class="dropdown-content hidden">
+                        <a href="#" id="download-csv">CSV</a>
+                        <a href="#" id="download-xlsx">Excel (XLSX)</a>
+                    </div>
+                </div>
                 <button id="save-button" class="action-button">Save</button>
                 <button id="home-button" class="action-button">Home</button>
             </div>
@@ -243,6 +292,20 @@
             <button id="close-modal">Cancel</button>
         </div>
     </div>
+
+    <div id="save-modal" class="modal hidden">
+        <div class="modal-content">
+            <h2>Save Spreadsheet</h2>
+            <form id="save-form">
+                <label>Filename: <input type="text" id="filename-input" placeholder="e.g., my_spreadsheet"></label><br>
+                <div style="margin-top: 10px;">
+                    <button type="submit" id="confirm-save">Save</button>
+                    <button type="button" id="cancel-save">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             const grid = document.getElementById('grid');
@@ -440,7 +503,7 @@
                             },
                             body: JSON.stringify({
                                 cell: cellName,
-                                formula: formula
+                                rhs: formula
                             })
                         });
 
@@ -472,82 +535,208 @@
 
             // Handle save button click
             saveButton.addEventListener('click', async function () {
-                try {
-                    // Check if File System Access API is supported
-                    if ('showSaveFilePicker' in window) {
-                        displayBar.textContent = "Preparing to save...";
-
-                        // Set up file save options
-                        const opts = {
-                            suggestedName: 'spreadsheet.bin.gz',
-                            types: [{
-                                description: 'Compressed Spreadsheet File',
-                                accept: { 'application/gzip': ['.bin.gz'] }
-                            }]
-                        };
-
-                        try {
-                            // Show save file picker
-                            const fileHandle = await window.showSaveFilePicker(opts);
-
-                            // Request file export from server
-                            const response = await fetch('/api/export', {
-                                method: 'POST'
-                            });
-
-                            if (!response.ok) {
-                                throw new Error('Failed to export spreadsheet');
-                            }
-
-                            // Get the file blob
-                            const blob = await response.blob();
-
-                            // Write to the selected file
-                            const writable = await fileHandle.createWritable();
-                            await writable.write(blob);
-                            await writable.close();
-
-                            displayBar.textContent = "Spreadsheet saved successfully!";
-                        } catch (pickErr) {
-                            // User may have cancelled
-                            if (pickErr.name === 'AbortError') {
-                                displayBar.textContent = "Save operation cancelled.";
-                                return;
-                            }
-                            throw pickErr;
-                        }
+                // First check if this is a loaded sheet
+                const sheetInfoResponse = await fetch('/api/sheet_info');
+                const sheetInfo = await sheetInfoResponse.json();
+                
+                // For loaded sheets, directly overwrite using the original path
+                if (sheetInfo.is_loaded && sheetInfo.original_path) {
+                    displayBar.textContent = "Updating existing spreadsheet file...";
+                    
+                    // Use the original path to save without prompting
+                    const saveResponse = await fetch(`/api/save?filename=${encodeURIComponent(sheetInfo.original_path)}`, {
+                        method: 'POST'
+                    });
+                    
+                    const result = await saveResponse.json();
+                    if (result.status === 'ok') {
+                        displayBar.textContent = `Spreadsheet saved to ${sheetInfo.original_path}`;
                     } else {
-                        // Fallback for browsers without File System Access API
-                        const filename = prompt("Enter filename to save (will be saved with .bin.gz extension):", "spreadsheet");
-                        if (!filename) return;
+                        throw new Error(result.message || 'Failed to save spreadsheet');
+                    }
+                    return;
+                }
+                
+                // For new sheets, always ask where to save
+                if ('showSaveFilePicker' in window) {
+                    displayBar.textContent = "Select where to save your spreadsheet...";
 
-                        displayBar.textContent = "Preparing download...";
+                    // Set up file save options with .bin.gz extension
+                    const opts = {
+                        suggestedName: 'spreadsheet.bin.gz',
+                        types: [{
+                            description: 'Compressed Spreadsheet File',
+                            accept: { 'application/gzip': ['.bin.gz'] }
+                        }]
+                    };
 
-                        const response = await fetch('/api/export', {
+                    try {
+                        // Show save file picker to get user's chosen location
+                        const fileHandle = await window.showSaveFilePicker(opts);
+                        const fileName = fileHandle.name;
+                        
+                        // Get complete path if possible (depends on browser security)
+                        let filePath = fileName;
+                        
+                        displayBar.textContent = "Saving spreadsheet...";
+                        
+                        // Export the spreadsheet data
+                        const exportResponse = await fetch('/api/export', {
                             method: 'POST'
                         });
-
-                        if (!response.ok) {
-                            throw new Error('Failed to export spreadsheet');
+                        
+                        if (!exportResponse.ok) {
+                            throw new Error('Failed to export spreadsheet data');
+                        }
+                        
+                        // Get the spreadsheet data as a blob
+                        const blob = await exportResponse.blob();
+                        
+                        // Write to the selected file using the File System Access API
+                        const writable = await fileHandle.createWritable();
+                        await writable.write(blob);
+                        await writable.close();
+                        
+                        // Now update the original_path in the server state
+                        // This makes future saves go directly to this location
+                        const saveResponse = await fetch(`/api/save?filename=${encodeURIComponent(filePath)}`, {
+                            method: 'POST'
+                        });
+                        
+                        const result = await saveResponse.json();
+                        if (result.status !== 'ok') {
+                            console.warn("Saved file successfully but failed to update original path:", result.message);
                         }
 
-                        // Get blob and trigger download
-                        const blob = await response.blob();
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `${filename}.bin.gz`;
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        URL.revokeObjectURL(url);
-
-                        displayBar.textContent = `Spreadsheet downloaded as ${filename}.bin.gz`;
+                        displayBar.textContent = `Spreadsheet saved to ${filePath}`;
+                    } catch (pickErr) {
+                        // User may have cancelled
+                        if (pickErr.name === 'AbortError') {
+                            displayBar.textContent = "Save operation cancelled.";
+                            return;
+                        }
+                        throw pickErr;
                     }
+                } else {
+                    // Fallback for browsers without File System Access API
+                    const filename = prompt("Enter filename to save spreadsheet:", "spreadsheet.bin.gz");
+                    if (!filename) {
+                        displayBar.textContent = "Save operation cancelled.";
+                        return;
+                    }
+
+                    displayBar.textContent = "Preparing download...";
+                    
+                    // Export the spreadsheet data
+                    const exportResponse = await fetch('/api/export', {
+                        method: 'POST'
+                    });
+
+                    if (!exportResponse.ok) {
+                        throw new Error('Failed to export spreadsheet');
+                    }
+
+                    // Get blob and trigger download
+                    const blob = await exportResponse.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename.endsWith('.bin.gz') ? filename : `${filename}.bin.gz`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    
+                    // Try to update the original path for future saves
+                    const fullFilename = filename.endsWith('.bin.gz') ? filename : `${filename}.bin.gz`;
+                    const saveResponse = await fetch(`/api/save?filename=${encodeURIComponent(fullFilename)}`, {
+                        method: 'POST'
+                    });
+
+                    displayBar.textContent = `Spreadsheet downloaded as ${fullFilename}`;
+                }
+            });
+
+            // Add download functionality
+            const downloadButton = document.getElementById('download-button');
+            const downloadDropdown = document.getElementById('download-dropdown');
+            const downloadCsv = document.getElementById('download-csv');
+            const downloadXlsx = document.getElementById('download-xlsx');
+
+            // Toggle dropdown when download button is clicked
+            downloadButton.addEventListener('click', function () {
+                downloadDropdown.classList.toggle('hidden');
+            });
+
+            // Hide dropdown when clicking elsewhere
+            document.addEventListener('click', function (event) {
+                if (!event.target.matches('#download-button')) {
+                    if (!downloadDropdown.classList.contains('hidden')) {
+                        downloadDropdown.classList.add('hidden');
+                    }
+                }
+            });
+
+            // Handle CSV download
+            downloadCsv.addEventListener('click', async function (e) {
+                e.preventDefault();
+                displayBar.textContent = "Preparing CSV download...";
+
+                try {
+                    const response = await fetch('/api/download/csv');
+
+                    if (!response.ok) {
+                        throw new Error('Failed to generate CSV');
+                    }
+
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'spreadsheet.csv';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+
+                    displayBar.textContent = "CSV downloaded successfully";
                 } catch (error) {
-                    console.error('Error saving spreadsheet:', error);
+                    console.error('Error downloading CSV:', error);
                     displayBar.textContent = `Error: ${error.message}`;
                 }
+
+                downloadDropdown.classList.add('hidden');
+            });
+
+            // Handle XLSX download
+            downloadXlsx.addEventListener('click', async function (e) {
+                e.preventDefault();
+                displayBar.textContent = "Preparing Excel download...";
+
+                try {
+                    const response = await fetch('/api/download/xlsx');
+
+                    if (!response.ok) {
+                        throw new Error('Failed to generate Excel file');
+                    }
+
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'spreadsheet.xlsx';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+
+                    displayBar.textContent = "Excel file downloaded successfully";
+                } catch (error) {
+                    console.error('Error downloading Excel:', error);
+                    displayBar.textContent = `Error: ${error.message}`;
+                }
+
+                downloadDropdown.classList.add('hidden');
             });
 
             // Add keyboard navigation
@@ -594,6 +783,82 @@
 
             // Initialize the grid
             fetchSheetData();
+
+            // Add save modal functionality
+            const saveModal = document.getElementById('save-modal');
+            const saveForm = document.getElementById('save-form');
+            const filenameInput = document.getElementById('filename-input');
+            const confirmSaveBtn = document.getElementById('confirm-save');
+            const cancelSaveBtn = document.getElementById('cancel-save');
+            
+            // Modified save button click handler
+            saveButton.addEventListener('click', async function() {
+                // First check if this is a loaded sheet
+                const sheetInfoResponse = await fetch('/api/sheet_info');
+                const sheetInfo = await sheetInfoResponse.json();
+                
+                // For loaded sheets with an original path, save directly
+                if (sheetInfo.is_loaded && sheetInfo.original_path) {
+                    displayBar.textContent = "Updating existing spreadsheet...";
+                    
+                    // Use the original path to save without prompting
+                    const saveResponse = await fetch(`/api/save?filename=${encodeURIComponent(sheetInfo.original_path)}`, {
+                        method: 'POST'
+                    });
+                    
+                    const result = await saveResponse.json();
+                    if (result.status === 'ok') {
+                        displayBar.textContent = `Spreadsheet saved successfully!`;
+                    } else {
+                        displayBar.textContent = `Error: ${result.message || 'Failed to save spreadsheet'}`;
+                    }
+                    return;
+                }
+                
+                // For new sheets, show the save dialog
+                saveModal.classList.remove('hidden');
+                filenameInput.focus();
+            });
+            
+            // Handle save form submission
+            saveForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                const filename = filenameInput.value.trim();
+                if (!filename) {
+                    alert('Please enter a filename');
+                    return;
+                }
+                
+                displayBar.textContent = "Saving spreadsheet...";
+                saveModal.classList.add('hidden');
+                
+                try {
+                    // Save with the specified name to the user's directory
+                    const formData = new FormData();
+                    formData.append('name', filename);
+                    
+                    const saveResponse = await fetch('/api/save_with_name', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    const result = await saveResponse.json();
+                    if (result.status === 'ok') {
+                        displayBar.textContent = `Spreadsheet saved as ${filename}`;
+                    } else {
+                        throw new Error(result.message || 'Failed to save spreadsheet');
+                    }
+                } catch (error) {
+                    console.error('Error saving spreadsheet:', error);
+                    displayBar.textContent = `Error: ${error.message}`;
+                }
+            });
+            
+            // Cancel save operation
+            cancelSaveBtn.addEventListener('click', function() {
+                saveModal.classList.add('hidden');
+            });
         });
     </script>
 </body>

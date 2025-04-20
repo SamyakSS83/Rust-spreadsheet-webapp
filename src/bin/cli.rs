@@ -1,4 +1,4 @@
-
+#![cfg(not(tarpaulin_include))]
 
 use cop::spreadsheet::{ParsedRHS, Spreadsheet};
 

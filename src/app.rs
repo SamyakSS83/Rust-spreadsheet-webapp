@@ -1,32 +1,35 @@
-use std::fs::File;
-use std::io::Write;
-
 use axum::{
     Json, Router,
     body::Bytes,
     extract::{Multipart, Path, Query, State},
     http::{StatusCode, header},
-    response::{Html, IntoResponse, Response},
+    response::{Html, IntoResponse, Response, Redirect},
     routing::{get, post},
+    middleware,
+    Form,
 };
+use axum_extra::extract::cookie::CookieJar;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
+use std::path::PathBuf;
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 
 use crate::saving;
-use crate::spreadsheet::Spreadsheet;
-
+use crate::spreadsheet::{Spreadsheet, ParsedRHS, Operand, FunctionName};
 use crate::graph::{GraphOptions, GraphType, create_graph};
+use crate::downloader;
+use crate::login::{self, User, UserCredentials};
 
 pub struct AppState {
     sheet: Mutex<Box<Spreadsheet>>,
+    original_path: Mutex<Option<String>>,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 struct CellUpdate {
+    rhs: String,  
     cell: String,
-    formula: String,
 }
 
 #[derive(Serialize)]
@@ -52,7 +55,12 @@ struct SaveResponse {
     message: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
+struct FileNameQuery {
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct GraphRequest {
     x_range: String,
     y_range: String,
@@ -62,18 +70,31 @@ struct GraphRequest {
     graph_type: String,
 }
 
-pub async fn run(rows: i32, cols: i32) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run(rows: u16, cols: u16) -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize the database
+    login::init_database()?;
+    
     // Create spreadsheet
-    let sheet = Spreadsheet::spreadsheet_create(rows, cols).expect("Failed to create spreadsheet");
+    let sheet = Spreadsheet::spreadsheet_create(rows, cols)
+        .expect("Failed to create spreadsheet");
 
     // Setup app state
     let app_state = Arc::new(AppState {
         sheet: Mutex::new(sheet),
+        original_path: Mutex::new(None),
     });
 
-    // Build router
-    let app = Router::new()
+    // 1) Build the public (no‐auth) routes
+    let public = Router::new()
         .route("/", get(serve_landing))
+        .route("/login", get(login::serve_login_page).post(login::handle_login))
+        .route("/signup", get(login::serve_signup_page).post(login::handle_signup))
+        .route("/logout", get(login::handle_logout))
+        .nest_service("/static", ServeDir::new("static"));
+
+    // 2) Build the protected routes and apply auth‐middleware
+    let protected = Router::new()
+        // spreadsheet endpoints
         .route("/sheet", get(serve_sheet))
         .route("/api/sheet", get(get_sheet_data))
         .route("/api/cell/:cell_name", get(get_cell))
@@ -82,7 +103,20 @@ pub async fn run(rows: i32, cols: i32) -> Result<(), Box<dyn std::error::Error>>
         .route("/api/export", post(export_spreadsheet))
         .route("/api/load", post(load_spreadsheet))
         .route("/api/graph", post(generate_graph))
-        .nest_service("/static", ServeDir::new("static"))
+        .route("/api/download/csv", get(download_csv))
+        .route("/api/download/xlsx", get(download_xlsx))
+        .route("/api/sheet_info", get(get_sheet_info))
+        .route("/api/save_with_name", post(save_spreadsheet_with_name))
+        // user file routes
+        .route("/:username", get(login::list_files))
+        .route("/:username/:filename", get(load_user_file))
+        // only these get require_auth
+        .layer(middleware::from_fn(login::require_auth));
+
+    // 3) Merge and attach shared state
+    let app = Router::new()
+        .merge(public)
+        .merge(protected)
         .with_state(app_state);
 
     // Start server
@@ -126,18 +160,18 @@ async fn generate_graph(
     }
 }
 
-async fn serve_landing() -> Html<&'static str> {
-    Html(include_str!("./static/landing.html"))
+async fn serve_landing() -> impl IntoResponse {
+    // Redirect to login page
+    Redirect::to("/login")
 }
 
 async fn serve_sheet(
     Query(params): Query<SheetQuery>,
     State(state): State<Arc<AppState>>,
 ) -> Html<&'static str> {
-    // If dimensions are provided, create a new sheet with those dimensions
     if let (Some(rows), Some(cols)) = (params.rows, params.cols) {
         if rows > 0 && rows <= 1000 && cols > 0 && cols <= 18278 {
-            let new_sheet = Spreadsheet::spreadsheet_create(rows, cols)
+            let new_sheet = Spreadsheet::spreadsheet_create(rows as u16, cols as u16)
                 .expect("Failed to create spreadsheet with specified dimensions");
 
             let mut current_sheet = state.sheet.lock().unwrap();
@@ -164,7 +198,7 @@ async fn get_sheet_data(State(state): State<Arc<AppState>>) -> impl IntoResponse
                     "col": c,
                     "name": Spreadsheet::get_cell_name(r, c),
                     "value": cell.value,
-                    "formula": cell.formula,
+                    "formula": formula_to_string(&cell.formula),  // Convert to string
                     "error": cell.error,
                 }));
             }
@@ -190,7 +224,7 @@ async fn get_cell(
             return Json(serde_json::json!({
                 "name": cell_name,
                 "value": cell.value,
-                "formula": cell.formula,
+                "formula": formula_to_string(&cell.formula),  // Convert to string
                 "error": cell.error,
             }))
             .into_response();
@@ -204,40 +238,180 @@ async fn update_cell(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<CellUpdate>,
 ) -> impl IntoResponse {
+    println!("(DEBUG) Received update_cell payload: {:?}", payload);
     let mut sheet = state.sheet.lock().unwrap();
     let mut status = String::new();
 
-    sheet.spreadsheet_set_cell_value(&payload.cell, &payload.formula, &mut status);
+    // Parse the cell name
+    if let Some((row, col)) = sheet.spreadsheet_parse_cell_name(&payload.cell) {
+        println!("(DEBUG) Parsed cell name: row={}, col={}", row, col);
+        
+        // Parse the formula string into ParsedRHS using is_valid_command
+        let (is_valid, _, _, parsed_rhs) = sheet.is_valid_command(&payload.cell, &payload.rhs);
+        
+        if is_valid {
+            println!("(DEBUG) Valid formula parsed: {:?}", parsed_rhs);
+            sheet.spreadsheet_set_cell_value(row, col, parsed_rhs, &mut status);
+        } else {
+            status = format!("Invalid formula: {}", payload.rhs);
+            println!("(DEBUG) {}", status);
+        }
+    } else {
+        status = format!("Invalid cell identifier: {}", payload.cell);
+        println!("(DEBUG) {}", status);
+    }
 
-    // Get updated cell value
-    let mut value = None;
+    // Retrieve the updated cell value and print its state
     if let Some((row, col)) = sheet.spreadsheet_parse_cell_name(&payload.cell) {
         let index = ((row - 1) * sheet.cols + (col - 1)) as usize;
         if let Some(cell) = &sheet.cells[index] {
-            value = Some(cell.value);
+            println!("(DEBUG) Final state of cell {}: value = {}, formula = {:?}, error = {}", payload.cell, cell.value, cell.formula, cell.error);
+            Json(CellResponse { status, value: Some(cell.value) }).into_response()
+        } else {
+            println!("(DEBUG) Missing cell at index {}", index);
+            Json(CellResponse { status: "Cell not found".into(), value: None }).into_response()
         }
+    } else {
+        println!("(DEBUG) Second parsing of cell identifier failed for '{}'", payload.cell);
+        Json(CellResponse { status, value: None }).into_response()
     }
-
-    Json(CellResponse { status, value })
 }
 
 async fn save_spreadsheet(
     Query(params): Query<SaveQuery>,
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
+    // Get the sheet and original path
     let sheet = state.sheet.lock().unwrap();
-
-    match saving::save_spreadsheet(&sheet, &params.filename) {
+    let mut original_path = state.original_path.lock().unwrap();
+    
+    // Get filename from query params or use original path if none provided
+    let filename = if params.filename.is_empty() {
+        // Try to use the original path
+        match original_path.as_ref() {
+            Some(path) => path.clone(),
+            None => return Json(SaveResponse {
+                status: "error".to_string(),
+                message: Some("No filename provided and no original path available".to_string()),
+            }).into_response()
+        }
+    } else {
+        // For new sheets, update the original path with the provided filename
+        let new_filename = params.filename.clone();
+        *original_path = Some(new_filename.clone());
+        new_filename
+    };
+    
+    match saving::save_spreadsheet(&sheet, &filename) {
         Ok(_) => Json(SaveResponse {
             status: "ok".to_string(),
             message: None,
         })
         .into_response(),
-        Err(e) => Json(SaveResponse {
-            status: "error".to_string(),
-            message: Some(e.to_string()),
+        Err(e) => {
+            // If save fails, don't keep the path for new sheets
+            if original_path.as_ref().unwrap() == &filename && params.filename == filename {
+                *original_path = None;
+            }
+            
+            Json(SaveResponse {
+                status: "error".to_string(),
+                message: Some(e.to_string()),
+            })
+            .into_response()
+        }
+    }
+}
+
+// Modified save function to save to user directory
+async fn save_spreadsheet_with_name(
+    State(state): State<Arc<AppState>>,
+    username: axum::extract::Extension<String>,
+    Form(query): Form<FileNameQuery>,
+) -> impl IntoResponse {
+    let sheet = state.sheet.lock().unwrap();
+    
+    // Create user directory if it doesn't exist
+    let user_dir = format!("database/{}", username.0);
+    let _ = std::fs::create_dir_all(&user_dir);
+    
+    // Build the filename
+    let filename = if query.name.trim().is_empty() {
+        "spreadsheet.bin.gz".to_string()
+    } else {
+        if !query.name.ends_with(".bin.gz") {
+            format!("{}.bin.gz", query.name)
+        } else {
+            query.name
+        }
+    };
+    
+    let path = format!("{}/{}", user_dir, filename);
+    
+    // Update original path
+    let mut original_path = state.original_path.lock().unwrap();
+    *original_path = Some(path.clone());
+    
+    // Save the file
+    match saving::save_spreadsheet(&sheet, &path) {
+        Ok(_) => Json(SaveResponse {
+            status: "ok".to_string(),
+            message: None,
         })
         .into_response(),
+        Err(e) => {
+            *original_path = None;
+            Json(SaveResponse {
+                status: "error".to_string(),
+                message: Some(e.to_string()),
+            })
+            .into_response()
+        }
+    }
+}
+
+// Load user file by path
+async fn load_user_file(
+    axum::extract::Path((username, filename)): axum::extract::Path<(String, String)>,
+    State(state): State<Arc<AppState>>,
+    current_user: axum::extract::Extension<String>,
+) -> impl IntoResponse {
+    // Security check - users can only load their own files
+    if username != current_user.0 {
+        return Redirect::to("/login").into_response();
+    }
+    
+    let path = format!("database/{}/{}", username, filename);
+    
+    // Check if file exists
+    if !std::path::Path::new(&path).exists() {
+        return Html("<h1>File not found</h1>".to_string()).into_response();
+    }
+    
+    // Load the file
+    match std::fs::read(&path) {
+        Ok(file_data) => {
+            match deserialize_from_memory(&file_data) {
+                Ok(loaded_sheet) => {
+                    {
+                        let mut sheet_guard = state.sheet.lock().unwrap();
+                        *sheet_guard = loaded_sheet;
+                        
+                        // Update original path
+                        let mut path_guard = state.original_path.lock().unwrap();
+                        *path_guard = Some(path);
+                    } // Release locks before calling serve_sheet
+                    
+                    // Clone the Arc to avoid ownership issues:
+                    serve_sheet(
+                        Query(SheetQuery { rows: None, cols: None }), 
+                        State(Arc::clone(&state))
+                    ).await.into_response()
+                }
+                Err(_) => Html("<h1>Error loading spreadsheet</h1>".to_string()).into_response(),
+            }
+        }
+        Err(_) => Html("<h1>Error reading file</h1>".to_string()).into_response(),
     }
 }
 
@@ -280,12 +454,17 @@ async fn load_spreadsheet(
 ) -> impl IntoResponse {
     // Process the multipart form data
     let mut file_data = Vec::new();
-    let mut field_name = String::new();
+    let _field_name = String::new();
+    let mut file_path = None;
 
     while let Some(field) = multipart.next_field().await.unwrap_or(None) {
-        field_name = field.name().unwrap_or("unknown").to_string();
+        let field_name = field.name().unwrap_or("unknown").to_string();
 
         if field_name == "spreadsheet" {
+            // First get the filename before consuming the field with bytes()
+            file_path = field.file_name().map(|s| s.to_string());
+            
+            // Now get the bytes (this consumes the field)
             file_data = field.bytes().await.unwrap_or_default().to_vec();
         }
     }
@@ -304,6 +483,12 @@ async fn load_spreadsheet(
             // Update the application's spreadsheet
             let mut sheet = state.sheet.lock().unwrap();
             *sheet = loaded_sheet;
+            
+            // Store the original file path
+            if let Some(path) = file_path {
+                let mut original_path = state.original_path.lock().unwrap();
+                *original_path = Some(path);
+            }
 
             Json(SaveResponse {
                 status: "ok".to_string(),
@@ -316,6 +501,42 @@ async fn load_spreadsheet(
             message: Some(format!("Failed to load spreadsheet: {}", e)),
         })
         .into_response(),
+    }
+}
+
+async fn download_csv(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let sheet = state.sheet.lock().unwrap();
+    
+    match downloader::to_csv(&sheet) {
+        Ok(csv_content) => Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, "text/csv")
+            .header(header::CONTENT_DISPOSITION, "attachment; filename=\"spreadsheet.csv\"")
+            .body(axum::body::Body::from(csv_content))
+            .unwrap(),
+        Err(e) => Response::builder()
+            .status(StatusCode::INTERNAL_SERVER_ERROR)
+            .header(header::CONTENT_TYPE, "text/plain")
+            .body(axum::body::Body::from(format!("Error generating CSV: {}", e)))
+            .unwrap(),
+    }
+}
+
+async fn download_xlsx(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let sheet = state.sheet.lock().unwrap();
+    
+    match downloader::to_xlsx(&sheet) {
+        Ok(xlsx_data) => Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            .header(header::CONTENT_DISPOSITION, "attachment; filename=\"spreadsheet.xlsx\"")
+            .body(axum::body::Body::from(Bytes::from(xlsx_data)))
+            .unwrap(),
+        Err(e) => Response::builder()
+            .status(StatusCode::INTERNAL_SERVER_ERROR)
+            .header(header::CONTENT_TYPE, "text/plain")
+            .body(axum::body::Body::from(format!("Error generating XLSX: {}", e)))
+            .unwrap(),
     }
 }
 
@@ -348,4 +569,70 @@ fn deserialize_from_memory(buffer: &[u8]) -> std::io::Result<Box<Spreadsheet>> {
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 
     Ok(Box::new(spreadsheet))
+}
+
+// Add this function to convert ParsedRHS to a display string
+fn formula_to_string(formula: &ParsedRHS) -> String {
+    match formula {
+        ParsedRHS::Function { name, args: (arg1, arg2) } => {
+            let func_name = match name {
+                FunctionName::Min => "MIN",
+                FunctionName::Max => "MAX",
+                FunctionName::Avg => "AVG",
+                FunctionName::Sum => "SUM",
+                FunctionName::Stdev => "STDEV",
+                FunctionName::Cut => "CUT",
+                FunctionName::Copy => "COPY",
+            };
+            
+            let cell1 = match arg1 {
+                Operand::Cell(row, col) => Spreadsheet::get_cell_name(*row, *col),
+                Operand::Number(n) => n.to_string(),
+            };
+            
+            let cell2 = match arg2 {
+                Operand::Cell(row, col) => Spreadsheet::get_cell_name(*row, *col),
+                Operand::Number(n) => n.to_string(),
+            };
+            
+            format!("{}({}:{})", func_name, cell1, cell2)
+        },
+        ParsedRHS::Arithmetic { lhs, operator, rhs } => {
+            let left = match lhs {
+                Operand::Cell(row, col) => Spreadsheet::get_cell_name(*row, *col),
+                Operand::Number(n) => n.to_string(),
+            };
+            
+            let right = match rhs {
+                Operand::Cell(row, col) => Spreadsheet::get_cell_name(*row, *col),
+                Operand::Number(n) => n.to_string(),
+            };
+            
+            format!("{}{}{}", left, operator, right)
+        },
+        ParsedRHS::Sleep(operand) => {
+            let value = match operand {
+                Operand::Cell(row, col) => Spreadsheet::get_cell_name(*row, *col),
+                Operand::Number(n) => n.to_string(),
+            };
+            
+            format!("SLEEP({})", value)
+        },
+        ParsedRHS::SingleValue(operand) => {
+            match operand {
+                Operand::Cell(row, col) => Spreadsheet::get_cell_name(*row, *col),
+                Operand::Number(n) => n.to_string(),
+            }
+        },
+        ParsedRHS::None => String::new(),
+    }
+}
+
+async fn get_sheet_info(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let original_path = state.original_path.lock().unwrap();
+    
+    Json(serde_json::json!({
+        "is_loaded": original_path.is_some(),
+        "original_path": original_path.clone().unwrap_or_default(),
+    }))
 }

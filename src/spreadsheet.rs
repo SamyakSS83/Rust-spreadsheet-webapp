@@ -149,7 +149,7 @@ impl Spreadsheet {
     }
 
     pub fn is_numeric(s: &str) -> bool {
-        s.chars().all(|c| c.is_ascii_digit())
+        !s.is_empty() && s.chars().all(|c| c.is_ascii_digit())
     }
 
     pub fn find_depends(&self, formula: &str) -> Result<(u16 , u16, u16, u16, bool), &'static str> {
@@ -553,82 +553,69 @@ impl Spreadsheet {
     }
 
     pub fn remove_old_dependents(&mut self, r: u16, c: u16) {
-        // eprintln!("Entered remove_old_dependents for cell: {cell_name}");
-        // Parse the provided cell name to locate the current cell.
+        // Get formula from the cell we're updating
         let formula = {
             let index = ((r - 1) as usize * self.cols as usize + (c - 1) as usize) as usize;
             if let Some(curr_cell) = self.cells.get(index).and_then(|opt| opt.as_ref()) {
-                // If there's no formula, nothing to update.
                 curr_cell.formula.clone()
             } else {
                 ParsedRHS::None
             }
         };
 
-        // eprintln!("Formula and deps: {:?}", formula_and_deps);
-
         match formula {
             ParsedRHS::Function { name, args } => {
                 if !name.is_cut_or_copy() {
                     let (arg1, arg2) = args;
-                    // arg1 nd arg2 would be Operand cell type from there extract r1,c1 and r2,c2
+                    // Get the range of cells we depend on
                     let (start_row, start_col) = match arg1 {
-                        Operand::Cell(r, c) => (r, c),
+                        Operand::Cell(row, col) => (row, col),
                         Operand::Number(_) => (0, 0), // Placeholder
                     };
                     let (end_row, end_col) = match arg2 {
-                        Operand::Cell(r, c) => (r, c),
+                        Operand::Cell(row, col) => (row, col),
                         Operand::Number(_) => (0, 0), // Placeholder
                     };
-                    for r in (start_row - 1)..=(end_row - 1) {
-                        for c in start_col..=end_col {
-                            let dep_index = (r as usize * self.cols as usize + (c - 1) as usize) as usize;
+                    
+                    // Remove our cell as a dependent from each cell in the range
+                    for dep_r in start_row..=end_row {
+                        for dep_c in start_col..=end_col {
+                            let dep_index = ((dep_r - 1) as usize * self.cols as usize + (dep_c - 1) as usize) as usize;
 
                             if let Some(dep_cell) =
                                 self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
                             {
-                                crate::cell::cell_dep_remove(dep_cell, r, c );
+                                // Pass r, c (our cell) to remove as a dependent
+                                crate::cell::cell_dep_remove(dep_cell, r, c);
                             }
                         }
                     }
                 }
             }
-            ParsedRHS::Sleep(op) => {
-                // Handle sleep function here
-                // if Cell as operand then remove dependency
-                // else do nothing
-                if let Operand::Cell(dep_r, dep_c) = op {
-                    let dep_index = ((dep_r - 1) as usize * self.cols as usize  + (dep_c - 1) as usize) as usize;
-
-                    if let Some(dep_cell) =
-                        self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
-                    {
-                        crate::cell::cell_dep_remove(dep_cell, r as u16, c as u16);
-                    }
-                }
-            }
+            // Other patterns with the same fix...
             ParsedRHS::Arithmetic { lhs, operator, rhs } => {
-                // dep cell = lhs cell
-                // dep cell2 = rhs cell
+                // Handle the left operand
                 if let Operand::Cell(dep_r, dep_c) = lhs {
                     let dep_index = ((dep_r - 1) as usize * self.cols as usize + (dep_c - 1) as usize) as usize;
 
                     if let Some(dep_cell) =
                         self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
                     {
-                        crate::cell::cell_dep_remove(dep_cell, r as u16, c as u16);
+                        crate::cell::cell_dep_remove(dep_cell, r, c);
                     }
                 }
+                // Handle the right operand
                 if let Operand::Cell(dep_r, dep_c) = rhs {
                     let dep_index = ((dep_r - 1) as usize * self.cols as usize  + (dep_c - 1) as usize) as usize;
 
                     if let Some(dep_cell) =
                         self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
                     {
-                        crate::cell::cell_dep_remove(dep_cell, r as u16, c as u16);
+                        crate::cell::cell_dep_remove(dep_cell, r, c);
                     }
                 }
             }
+            // Handle single value case too
             ParsedRHS::SingleValue(op) => {
                 if let Operand::Cell(dep_r, dep_c) = op {
                     let dep_index = ((dep_r - 1) as usize * self.cols as usize + (dep_c - 1) as usize) as usize;
@@ -636,7 +623,7 @@ impl Spreadsheet {
                     if let Some(dep_cell) =
                         self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
                     {
-                        crate::cell::cell_dep_remove(dep_cell, r as u16, c as u16);
+                        crate::cell::cell_dep_remove(dep_cell, r, c);
                     }
                 }
             }
@@ -1362,7 +1349,7 @@ impl Spreadsheet {
             return ret;
         }
     }
-    fn is_valid_arithmetic_expression(&self, expr: &str) -> (bool, ParsedRHS) {
+    pub fn is_valid_arithmetic_expression(&self, expr: &str) -> (bool, ParsedRHS) {
         // initialise the return value
         let mut ret = (false, ParsedRHS::None);
         // let mut oprnd1 = Operand::Number(0);
