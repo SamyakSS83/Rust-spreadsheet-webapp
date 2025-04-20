@@ -42,8 +42,7 @@ impl Cell {
 
         match &mut self.dependents {
             Dependents::None => {
-                let mut v = Vec::new();
-                v.push(key);
+                let v = vec![key];
                 self.dependents = Dependents::Vector(v);
             }
             Dependents::Vector(vec) => {

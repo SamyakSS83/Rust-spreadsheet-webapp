@@ -279,8 +279,8 @@ fn create_bar_graph(
         let max_x = data.iter().map(|(x, _)| x).max().unwrap_or(&100);
         let max_y = data.iter().map(|(_, y)| y).max().unwrap_or(&100);
 
-        let x_range = *min_x as i32..*max_x as i32 + 1;
-        let y_range = 0..*max_y as i32 + 1;
+        let x_range = *min_x..*max_x + 1;
+        let y_range = 0..*max_y + 1;
 
         let mut chart = ChartBuilder::on(&root)
             .caption(&options.title, ("sans-serif", 30).into_font())
@@ -326,8 +326,8 @@ fn save_bar_graph(
     let max_x = data.iter().map(|(x, _)| x).max().unwrap_or(&100);
     let max_y = data.iter().map(|(_, y)| y).max().unwrap_or(&100);
 
-    let x_range = *min_x as i32..*max_x as i32 + 1;
-    let y_range = 0..*max_y as i32 + 1;
+    let x_range = *min_x..*max_x + 1;
+    let y_range = 0..*max_y + 1;
 
     let mut chart = ChartBuilder::on(&root)
         .caption(&options.title, ("sans-serif", 30).into_font())
