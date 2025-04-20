@@ -47,6 +47,11 @@ mod spreadsheet_tests {
         assert_eq!(Spreadsheet::col_to_letter(53), "BA");
         assert_eq!(Spreadsheet::col_to_letter(702), "ZZ");
         assert_eq!(Spreadsheet::col_to_letter(703), "AAA");
+        assert_eq!(Spreadsheet::col_to_letter(704), "AAB");
+        assert_eq!(Spreadsheet::col_to_letter(728), "AAZ");
+        assert_eq!(Spreadsheet::col_to_letter(729), "ABA");
+        assert_eq!(Spreadsheet::col_to_letter(1404), "BAZ");
+        assert_eq!(Spreadsheet::col_to_letter(18278), "ZZZ");
 
         // Test converting letters to column numbers
         assert_eq!(Spreadsheet::letter_to_col("A"), 1);
@@ -56,6 +61,18 @@ mod spreadsheet_tests {
         assert_eq!(Spreadsheet::letter_to_col("BA"), 53);
         assert_eq!(Spreadsheet::letter_to_col("ZZ"), 702);
         assert_eq!(Spreadsheet::letter_to_col("AAA"), 703);
+        assert_eq!(Spreadsheet::letter_to_col("AAB"), 704);
+        assert_eq!(Spreadsheet::letter_to_col("AAZ"), 728);
+        assert_eq!(Spreadsheet::letter_to_col("ABA"), 729);
+        assert_eq!(Spreadsheet::letter_to_col("BAZ"), 1404);
+        assert_eq!(Spreadsheet::letter_to_col("ZZZ"), 18278);
+        
+        // Test round-trip conversion
+        for col in 1..=100 {
+            let letter = Spreadsheet::col_to_letter(col);
+            let back = Spreadsheet::letter_to_col(&letter);
+            assert_eq!(col, back);
+        }
     }
 
     #[test]
@@ -64,6 +81,7 @@ mod spreadsheet_tests {
         assert_eq!(Spreadsheet::get_cell_name(1, 1), "A1");
         assert_eq!(Spreadsheet::get_cell_name(10, 26), "Z10");
         assert_eq!(Spreadsheet::get_cell_name(100, 27), "AA100");
+        assert_eq!(Spreadsheet::get_cell_name(100, 100), "CV100");
 
         // Test parsing cell names in a spreadsheet context
         let sheet = Spreadsheet::spreadsheet_create(100, 100).unwrap();
@@ -72,11 +90,12 @@ mod spreadsheet_tests {
         assert_eq!(sheet.spreadsheet_parse_cell_name("A1"), Some((1, 1)));
         assert_eq!(sheet.spreadsheet_parse_cell_name("Z10"), Some((10, 26)));
         assert_eq!(sheet.spreadsheet_parse_cell_name("AA100"), Some((100, 27)));
+        assert_eq!(sheet.spreadsheet_parse_cell_name("CV100"), Some((100, 100)));
 
         // Invalid cell names (out of bounds)
         assert_eq!(sheet.spreadsheet_parse_cell_name("A0"), None);
         assert_eq!(sheet.spreadsheet_parse_cell_name("A101"), None);
-        assert_eq!(sheet.spreadsheet_parse_cell_name("CV1"), Some((1, 100))); // Beyond column limit
+        assert_eq!(sheet.spreadsheet_parse_cell_name("CW1"), None); // Column out of bounds
 
         // Malformed cell names
         assert_eq!(sheet.spreadsheet_parse_cell_name("1A"), None);
@@ -92,6 +111,9 @@ mod spreadsheet_tests {
         assert!(Spreadsheet::is_numeric("0"));
         assert!(Spreadsheet::is_numeric("123"));
         assert!(Spreadsheet::is_numeric("9876543210"));
+        assert!(Spreadsheet::is_numeric("00"));
+        assert!(Spreadsheet::is_numeric("0098"));
+        assert!(Spreadsheet::is_numeric("0090"));
 
         // Test non-numeric strings
         assert!(!Spreadsheet::is_numeric(""));
@@ -101,6 +123,7 @@ mod spreadsheet_tests {
         assert!(!Spreadsheet::is_numeric("-123")); // Contains non-digit
         assert!(!Spreadsheet::is_numeric("+123")); // Contains non-digit
         assert!(!Spreadsheet::is_numeric("12.3")); // Contains non-digit
+        assert!(!Spreadsheet::is_numeric("-0090")); // Contains non-digit
     }
 
     #[test]
@@ -153,6 +176,8 @@ mod spreadsheet_tests {
         let a2_idx = 1 * 10 + 0;
         let b1_idx = 0 * 10 + 1;
         let b2_idx = 1 * 10 + 1;
+        let c1_idx = 0 * 10 + 2;
+        let d1_idx = 0 * 10 + 3;
 
         if let Some(cell) = sheet.cells[a1_idx].as_mut() {
             cell.value = 10;
@@ -166,20 +191,39 @@ mod spreadsheet_tests {
         if let Some(cell) = sheet.cells[b2_idx].as_mut() {
             cell.value = 40;
         }
+        if let Some(cell) = sheet.cells[c1_idx].as_mut() {
+            cell.value = 123;
+        }
+        if let Some(cell) = sheet.cells[d1_idx].as_mut() {
+            cell.value = -234;
+        }
 
-        // Test SingleValue - direct number
+        // Test various expressions similar to the C tests
+        
+        // Test with numeric literals
         let expr = ParsedRHS::SingleValue(Operand::Number(42));
         let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 1, 1);
         assert_eq!(value, 42);
         assert!(!error);
 
-        // Test SingleValue - cell reference
+        // Test with positive and negative numbers
+        let expr = ParsedRHS::SingleValue(Operand::Number(-1));
+        let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 1, 1);
+        assert_eq!(value, -1);
+        assert!(!error);
+
+        let expr = ParsedRHS::SingleValue(Operand::Number(1));
+        let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 1, 1);
+        assert_eq!(value, 1);
+        assert!(!error);
+
+        // Test with cell references
         let expr = ParsedRHS::SingleValue(Operand::Cell(1, 1)); // A1
         let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 2, 2);
         assert_eq!(value, 10);
         assert!(!error);
 
-        // Test Arithmetic - addition
+        // Test basic arithmetic
         let expr = ParsedRHS::Arithmetic {
             lhs: Operand::Cell(1, 1), // A1 = 10
             operator: '+',
@@ -189,55 +233,45 @@ mod spreadsheet_tests {
         assert_eq!(value, 30);
         assert!(!error);
 
-        // Test Function - SUM
-        let expr = ParsedRHS::Function {
-            name: FunctionName::Sum,
-            args: (
-                Operand::Cell(1, 1), // A1
-                Operand::Cell(2, 2), // B2
-            ),
+        // Test arithmetic with constants
+        let expr = ParsedRHS::Arithmetic {
+            lhs: Operand::Number(3),
+            operator: '*',
+            rhs: Operand::Cell(1, 2), // B1 = 30
         };
-        let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 3, 3);
-        assert_eq!(value, 100); // 10 + 20 + 30 + 40
+        let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 1, 2);
+        assert_eq!(value, 90);
         assert!(!error);
 
-        // Test Function - MIN
-        let expr = ParsedRHS::Function {
-            name: FunctionName::Min,
-            args: (
-                Operand::Cell(1, 1), // A1
-                Operand::Cell(2, 2), // B2
-            ),
+        let expr = ParsedRHS::Arithmetic {
+            lhs: Operand::Cell(1, 3), // C1 = 123
+            operator: '-',
+            rhs: Operand::Number(34),
         };
-        let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 3, 3);
-        assert_eq!(value, 10);
+        let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 1, 2);
+        assert_eq!(value, 89);
         assert!(!error);
 
-        // Test Function - MAX
-        let expr = ParsedRHS::Function {
-            name: FunctionName::Max,
-            args: (
-                Operand::Cell(1, 1), // A1
-                Operand::Cell(2, 2), // B2
-            ),
+        // Test division and error propagation
+        let expr = ParsedRHS::Arithmetic {
+            lhs: Operand::Number(3),
+            operator: '/',
+            rhs: Operand::Cell(1, 1), // A1 = 10
         };
-        let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 3, 3);
-        assert_eq!(value, 40);
+        let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 1, 2);
+        assert_eq!(value, 0); // Integer division
         assert!(!error);
 
-        // Test Function - AVG
-        let expr = ParsedRHS::Function {
-            name: FunctionName::Avg,
-            args: (
-                Operand::Cell(1, 1), // A1
-                Operand::Cell(2, 2), // B2
-            ),
+        let expr = ParsedRHS::Arithmetic {
+            lhs: Operand::Number(10),
+            operator: '/',
+            rhs: Operand::Number(0),
         };
-        let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 3, 3);
-        assert_eq!(value, 25); // (10 + 20 + 30 + 40) / 4
-        assert!(!error);
+        let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 1, 2);
+        assert_eq!(value, 0);
+        assert!(error); // Division by zero error
 
-        // Test error propagation
+        // Test propagation of errors
         if let Some(cell) = sheet.cells[a1_idx].as_mut() {
             cell.error = true;
         }
@@ -245,6 +279,65 @@ mod spreadsheet_tests {
         let expr = ParsedRHS::SingleValue(Operand::Cell(1, 1)); // A1 (with error)
         let (_, error) = sheet.spreadsheet_evaluate_expression(&expr, 2, 2);
         assert!(error);
+
+        // Test with range functions
+        // First, reset A1's error flag
+        if let Some(cell) = sheet.cells[a1_idx].as_mut() {
+            cell.error = false;
+        }
+
+        // Test SUM function
+        let expr = ParsedRHS::Function {
+            name: FunctionName::Sum,
+            args: (
+                Operand::Cell(1, 1), // A1 = 10
+                Operand::Cell(2, 2), // B2 = 40
+            ),
+        };
+        let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 3, 3);
+        assert_eq!(value, 100); // 10 + 20 + 30 + 40
+        assert!(!error);
+
+        // Test MIN function
+        let expr = ParsedRHS::Function {
+            name: FunctionName::Min,
+            args: (
+                Operand::Cell(1, 1), // A1 = 10
+                Operand::Cell(2, 2), // B2 = 40
+            ),
+        };
+        let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 3, 3);
+        assert_eq!(value, 10);
+        assert!(!error);
+
+        // Test MAX function
+        let expr = ParsedRHS::Function {
+            name: FunctionName::Max,
+            args: (
+                Operand::Cell(1, 1), // A1 = 10
+                Operand::Cell(2, 2), // B2 = 40
+            ),
+        };
+        let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 3, 3);
+        assert_eq!(value, 40);
+        assert!(!error);
+
+        // Test AVG function
+        let expr = ParsedRHS::Function {
+            name: FunctionName::Avg,
+            args: (
+                Operand::Cell(1, 1), // A1 = 10
+                Operand::Cell(2, 2), // B2 = 40
+            ),
+        };
+        let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 3, 3);
+        assert_eq!(value, 25); // (10 + 20 + 30 + 40) / 4
+        assert!(!error);
+
+        // Test error propagation with functions
+        if let Some(cell) = sheet.cells[a1_idx].as_mut() {
+            cell.error = true;
+        }
 
         let expr = ParsedRHS::Function {
             name: FunctionName::Sum,
@@ -490,6 +583,22 @@ mod spreadsheet_tests {
         // Out-of-bounds reference
         let (valid, _, _, _) = sheet.is_valid_command("A1", "Z100");
         assert!(!valid); // Z100 is beyond the sheet bounds
+        
+        // Test additional invalid commands
+        let (valid, _, _, _) = sheet.is_valid_command("B1", "-A11");
+        assert!(!valid); // A11 out of bounds
+        
+        let (valid, _, _, _) = sheet.is_valid_command("A1", "MAZ(B1:C5)");
+        assert!(!valid); // Invalid function
+        
+        let (valid, _, _, _) = sheet.is_valid_command("A1", "SLEEP()");
+        assert!(!valid); // Missing arguments
+        
+        let (valid, _, _, _) = sheet.is_valid_command("A1", "MAX()");
+        assert!(!valid); // Missing arguments
+        
+        let (valid, _, _, _) = sheet.is_valid_command("", "");
+        assert!(!valid); // Empty cell and formula
     }
 
     #[test]
@@ -524,6 +633,173 @@ mod spreadsheet_tests {
 
         let (valid, _) = sheet.is_valid_arithmetic_expression("Z100+A1");
         assert!(!valid); // Out of bounds cell
+        
+        let (valid, _) = sheet.is_valid_arithmetic_expression("--5");
+        assert!(!valid); // Invalid format
+        
+        let (valid, _) = sheet.is_valid_arithmetic_expression("-4+++5");
+        assert!(!valid); // Invalid format
+    }
+    
+    #[test]
+    fn test_range_functions() {
+        let mut sheet = Spreadsheet::spreadsheet_create(10, 10).unwrap();
+        let mut status = String::new();
+        
+        // Setup test data in A1-A5
+        let vals = [10, 20, 30, 40, 50];
+        for i in 0..5 {
+            let row = i + 1;
+            let expr = ParsedRHS::SingleValue(Operand::Number(vals[i]));
+            sheet.spreadsheet_set_cell_value(row as i16, 1, expr, &mut status);
+            assert_eq!(status, "ok");
+        }
+        
+        // Test SUM
+        let sum_expr = ParsedRHS::Function {
+            name: FunctionName::Sum,
+            args: (
+                Operand::Cell(1, 1), // A1
+                Operand::Cell(5, 1), // A5
+            ),
+        };
+        sheet.spreadsheet_set_cell_value(1, 2, sum_expr, &mut status); // B1
+        assert_eq!(status, "ok");
+        
+        let b1_idx = 0 * 10 + 1;
+        if let Some(cell) = sheet.cells[b1_idx].as_ref() {
+            assert_eq!(cell.value, 150); // 10+20+30+40+50
+            assert!(!cell.error);
+        }
+        
+        // Test AVG
+        let avg_expr = ParsedRHS::Function {
+            name: FunctionName::Avg,
+            args: (
+                Operand::Cell(1, 1), // A1
+                Operand::Cell(5, 1), // A5
+            ),
+        };
+        sheet.spreadsheet_set_cell_value(2, 2, avg_expr, &mut status); // B2
+        assert_eq!(status, "ok");
+        
+        let b2_idx = 1 * 10 + 1;
+        if let Some(cell) = sheet.cells[b2_idx].as_ref() {
+            assert_eq!(cell.value, 30); // (10+20+30+40+50)/5
+            assert!(!cell.error);
+        }
+        
+        // Test MIN
+        let min_expr = ParsedRHS::Function {
+            name: FunctionName::Min,
+            args: (
+                Operand::Cell(1, 1), // A1
+                Operand::Cell(5, 1), // A5
+            ),
+        };
+        sheet.spreadsheet_set_cell_value(3, 2, min_expr, &mut status); // B3
+        assert_eq!(status, "ok");
+        
+        let b3_idx = 2 * 10 + 1;
+        if let Some(cell) = sheet.cells[b3_idx].as_ref() {
+            assert_eq!(cell.value, 10);
+            assert!(!cell.error);
+        }
+        
+        // Test MAX
+        let max_expr = ParsedRHS::Function {
+            name: FunctionName::Max,
+            args: (
+                Operand::Cell(1, 1), // A1
+                Operand::Cell(5, 1), // A5
+            ),
+        };
+        sheet.spreadsheet_set_cell_value(4, 2, max_expr, &mut status); // B4
+        assert_eq!(status, "ok");
+        
+        let b4_idx = 3 * 10 + 1;
+        if let Some(cell) = sheet.cells[b4_idx].as_ref() {
+            assert_eq!(cell.value, 50);
+            assert!(!cell.error);
+        }
+        
+        // Update a value and check if dependencies update
+        let new_val_expr = ParsedRHS::SingleValue(Operand::Number(100));
+        sheet.spreadsheet_set_cell_value(1, 1, new_val_expr, &mut status); // A1 = 100
+        assert_eq!(status, "ok");
+        
+        // Check that SUM, AVG, MIN, MAX all updated
+        if let Some(cell) = sheet.cells[b1_idx].as_ref() {
+            assert_eq!(cell.value, 240); // 100+20+30+40+50
+        }
+        
+        if let Some(cell) = sheet.cells[b2_idx].as_ref() {
+            assert_eq!(cell.value, 48); // (100+20+30+40+50)/5
+        }
+    }
+    
+    #[test]
+    fn test_error_propagation() {
+        let mut sheet = Spreadsheet::spreadsheet_create(10, 10).unwrap();
+        let mut status = String::new();
+        
+        // Set up a cell with division by zero error
+        let div_zero_expr = ParsedRHS::Arithmetic {
+            lhs: Operand::Number(10),
+            operator: '/',
+            rhs: Operand::Number(0),
+        };
+        sheet.spreadsheet_set_cell_value(1, 1, div_zero_expr, &mut status); // A1
+        assert_eq!(status, "ok");
+        
+        // Verify error state
+        let a1_idx = 0 * 10 + 0;
+        if let Some(cell) = sheet.cells[a1_idx].as_ref() {
+            assert!(cell.error);
+        }
+        
+        // Reference the error cell
+        let ref_expr = ParsedRHS::SingleValue(Operand::Cell(1, 1)); // A1
+        sheet.spreadsheet_set_cell_value(2, 1, ref_expr, &mut status); // A2
+        assert_eq!(status, "ok");
+        
+        // Check error propagation
+        let a2_idx = 1 * 10 + 0;
+        if let Some(cell) = sheet.cells[a2_idx].as_ref() {
+            assert!(cell.error);
+        }
+        
+        // Use in arithmetic
+        let arith_expr = ParsedRHS::Arithmetic {
+            lhs: Operand::Cell(1, 1), // A1 (error)
+            operator: '+',
+            rhs: Operand::Number(5),
+        };
+        sheet.spreadsheet_set_cell_value(3, 1, arith_expr, &mut status); // A3
+        assert_eq!(status, "ok");
+        
+        // Check error propagation
+        let a3_idx = 2 * 10 + 0;
+        if let Some(cell) = sheet.cells[a3_idx].as_ref() {
+            assert!(cell.error);
+        }
+        
+        // Use in function
+        let func_expr = ParsedRHS::Function {
+            name: FunctionName::Sum,
+            args: (
+                Operand::Cell(1, 1), // A1 (error)
+                Operand::Cell(1, 2), // B1
+            ),
+        };
+        sheet.spreadsheet_set_cell_value(4, 1, func_expr, &mut status); // A4
+        assert_eq!(status, "ok");
+        
+        // Check error propagation
+        let a4_idx = 3 * 10 + 0;
+        if let Some(cell) = sheet.cells[a4_idx].as_ref() {
+            assert!(cell.error);
+        }
     }
 }
 

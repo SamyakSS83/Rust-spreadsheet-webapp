@@ -1,79 +1,140 @@
-// use cop::cell::{Cell, cell_create, cell_dep_insert, cell_dep_remove};
-// // use crate::cell::{Cell, cell_create, cell_destroy, cell_dep_insert, cell_dep_remove};
+#![cfg(not(tarpaulin_include))]
+use cop::cell::{Cell, Dependents, cell_create, cell_dep_insert, cell_dep_remove};
 
-// fn cell_contains(cell: &Cell, key: &str) -> bool {
-//     cell.contains(key)
-// }
+#[cfg(test)]
+mod cell_tests {
+    use super::*;
 
-// fn main() {
-//     println!("=== Cell Test Suite ===\n");
+    fn cell_contains(cell: &Cell, row: i16, col: i16) -> bool {
+        cell.contains(row, col)
+    }
 
-//     println!("Test 1: Basic cell creation");
-//     let mut cell = cell_create(1, 1);
-//     assert_eq!(cell.row, 1);
-//     assert_eq!(cell.col, 1);
-//     assert_eq!(cell.value, 0);
-//     assert!(!cell.error);
-//     assert_eq!(cell.formula, None);
-//     assert_eq!(cell.dependents_initialised, 0);
-//     println!(
-//         "Cell created at position ({},{}) - PASS\n",
-//         cell.row, cell.col
-//     );
+    #[test]
+    fn test_basic_cell_creation() {
+        let cell = cell_create(1, 1);
+        assert_eq!(cell.row, 1);
+        assert_eq!(cell.col, 1);
+        assert_eq!(cell.value, 0);
+        assert!(!cell.error);
+        assert!(matches!(cell.formula, cop::spreadsheet::ParsedRHS::None));
+        assert_eq!(cell.dependents_initialised, 0);
+        assert!(matches!(cell.dependents, Dependents::None));
+    }
 
-//     println!("Test 2: Cell value modification");
-//     cell.value = 100;
-//     assert_eq!(cell.value, 100);
-//     println!("Cell value set to {} - PASS\n", cell.value);
+    #[test]
+    fn test_cell_value_modification() {
+        let mut cell = cell_create(1, 1);
+        cell.value = 100;
+        assert_eq!(cell.value, 100);
+    }
 
-//     println!("Test 3: Cell formula assignment");
-//     let formula = "=B1+C2".to_string();
-//     cell.formula = Some(formula);
-//     assert_eq!(cell.formula, Some("=B1+C2".to_string()));
-//     println!(
-//         "Cell formula set to \"{}\" - PASS\n",
-//         cell.formula.as_ref().unwrap()
-//     );
+    #[test]
+    fn test_cell_formula_assignment() {
+        use cop::spreadsheet::{Operand, ParsedRHS};
 
-//     println!("Test 4: Error flag");
-//     cell.error = true;
-//     assert!(cell.error);
-//     println!("Cell error flag set - PASS\n");
+        let mut cell = cell_create(1, 1);
+        cell.formula = ParsedRHS::SingleValue(Operand::Number(42));
 
-//     println!("Test 5: Managing dependents");
-//     cell_dep_insert(&mut cell, "B1");
-//     cell_dep_insert(&mut cell, "C2");
-//     cell_dep_insert(&mut cell, "D3");
+        assert!(matches!(cell.formula, ParsedRHS::SingleValue(_)));
 
-//     assert!(cell_contains(&cell, "B1"));
-//     assert!(cell_contains(&cell, "C2"));
-//     assert!(cell_contains(&cell, "D3"));
-//     assert!(!cell_contains(&cell, "E4"));
+        if let ParsedRHS::SingleValue(Operand::Number(value)) = cell.formula {
+            assert_eq!(value, 42);
+        } else {
+            panic!("Expected ParsedRHS::SingleValue(Operand::Number)");
+        }
+    }
 
-//     println!("Test 6: Removing dependents");
-//     cell_dep_remove(&mut cell, "C2");
-//     assert!(!cell_contains(&cell, "C2"));
+    #[test]
+    fn test_error_flag() {
+        let mut cell = cell_create(1, 1);
+        cell.error = true;
+        assert!(cell.error);
+    }
 
-//     println!("Test 7: Creating multiple cells");
-//     let mut cell2 = cell_create(2, 3);
-//     assert_eq!(cell2.row, 2);
-//     assert_eq!(cell2.col, 3);
-//     println!("Cell 2 created at position ({},{})", cell2.row, cell2.col);
+    #[test]
+    fn test_managing_dependents() {
+        let mut cell = cell_create(1, 1);
 
-//     cell_dep_insert(&mut cell2, "A1");
-//     cell_dep_insert(&mut cell2, "X10");
+        cell_dep_insert(&mut cell, 2, 1); // B1
+        cell_dep_insert(&mut cell, 3, 2); // C2
+        cell_dep_insert(&mut cell, 4, 3); // D3
 
-//     // Verify each cell has its own dependencies
-//     assert!(cell_contains(&cell, "B1"));
-//     assert!(!cell_contains(&cell2, "B1"));
-//     assert!(!cell_contains(&cell, "A1"));
-//     assert!(cell_contains(&cell2, "A1"));
-//     println!("Each cell maintains its own dependencies - PASS\n");
+        assert!(cell_contains(&cell, 2, 1));
+        assert!(cell_contains(&cell, 3, 2));
+        assert!(cell_contains(&cell, 4, 3));
+        assert!(!cell_contains(&cell, 5, 4)); // E4 not added
+    }
 
-//     println!("Test 8: Memory management");
-//     let cell_size = std::mem::size_of::<Cell>();
-//     println!("Size of Cell struct: {} bytes", cell_size);
+    #[test]
+    fn test_removing_dependents() {
+        let mut cell = cell_create(1, 1);
 
-//     println!("All tests completed.");
-// }
-fn main() {}
+        cell_dep_insert(&mut cell, 2, 1); // B1
+        cell_dep_insert(&mut cell, 3, 2); // C2
+
+        assert!(cell_contains(&cell, 3, 2));
+
+        cell_dep_remove(&mut cell, 3, 2);
+        assert!(!cell_contains(&cell, 3, 2));
+        assert!(cell_contains(&cell, 2, 1)); // B1 should still be there
+    }
+
+    #[test]
+    fn test_creating_multiple_cells() {
+        let mut cell1 = cell_create(1, 1);
+        let mut cell2 = cell_create(2, 3);
+
+        assert_eq!(cell1.row, 1);
+        assert_eq!(cell1.col, 1);
+        assert_eq!(cell2.row, 2);
+        assert_eq!(cell2.col, 3);
+
+        cell_dep_insert(&mut cell1, 2, 1); // B1
+        cell_dep_insert(&mut cell2, 1, 1); // A1
+        cell_dep_insert(&mut cell2, 10, 24); // X10
+
+        // Verify each cell has its own dependencies
+        assert!(cell_contains(&cell1, 2, 1));
+        assert!(!cell_contains(&cell2, 2, 1));
+        assert!(!cell_contains(&cell1, 1, 1));
+        assert!(cell_contains(&cell2, 1, 1));
+        assert!(cell_contains(&cell2, 10, 24));
+    }
+
+    #[test]
+    fn test_dependent_conversion() {
+        let mut cell = cell_create(1, 1);
+
+        // Add 8 dependencies to trigger conversion from Vector to Set
+        for i in 1..=8 {
+            cell_dep_insert(&mut cell, i, i);
+        }
+
+        // Check that Set was created by verifying format
+        match &cell.dependents {
+            Dependents::Vector(_) => panic!("Should have converted to Set"),
+            Dependents::Set(_) => assert!(true), // This is expected
+            Dependents::None => panic!("Should not be None"),
+        }
+
+        // Ensure all dependencies are still accessible
+        for i in 1..=8 {
+            assert!(cell_contains(&cell, i, i));
+        }
+
+        // Add one more and check it works
+        cell_dep_insert(&mut cell, 9, 9);
+        assert!(cell_contains(&cell, 9, 9));
+
+        // Remove one and check it works
+        cell_dep_remove(&mut cell, 5, 5);
+        assert!(!cell_contains(&cell, 5, 5));
+        assert!(cell_contains(&cell, 6, 6));
+    }
+}
+
+fn main() {
+    // When run directly, this will run the tests
+    println!("=== Cell Test Suite ===");
+    println!("Run with 'cargo test' to execute tests");
+}
