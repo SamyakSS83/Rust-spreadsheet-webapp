@@ -92,7 +92,7 @@ pub fn get_users() -> Result<HashMap<String, User>, String> {
     };
 
     let mut contents = String::new();
-    if let Err(_) = file.read_to_string(&mut contents) {
+    if file.read_to_string(&mut contents).is_err() {
         return Err("Failed to read users file".to_string());
     }
 
@@ -113,7 +113,7 @@ pub fn save_users(users: &HashMap<String, User>) -> Result<(), String> {
         Err(_) => return Err("Failed to create users file".to_string()),
     };
 
-    if let Err(_) = file.write_all(json.as_bytes()) {
+    if file.write_all(json.as_bytes()).is_err() {
         return Err("Failed to write users data".to_string());
     }
 
@@ -137,7 +137,7 @@ pub fn register_user(username: &str, password: &str) -> Result<(), String> {
 
     // Create user directory
     let user_dir = Path::new(DATABASE_DIR).join(username);
-    if let Err(_) = create_dir_all(&user_dir) {
+    if create_dir_all(&user_dir).is_err() {
         return Err("Failed to create user directory".to_string());
     }
 

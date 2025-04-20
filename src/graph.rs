@@ -490,7 +490,7 @@ fn create_area_graph(
         chart.draw_series(AreaSeries::new(
             sorted_data.iter().map(|&(x, y)| (x as f64, y as f64)),
             0.0,
-            &RGBAColor(30, 144, 255, 0.5), // semi-transparent blue
+            RGBAColor(30, 144, 255, 0.5), // semi-transparent blue
         ))?;
 
         root.present()?;
@@ -543,9 +543,9 @@ fn save_area_graph(
         AreaSeries::new(
             sorted_data.iter().map(|&(x, y)| (x as f64, y as f64)),
             0.0,
-            &BLUE.mix(0.2),
+            BLUE.mix(0.2),
         )
-        .border_style(&BLUE),
+        .border_style(BLUE),
     )?;
 
     root.present()?;
@@ -592,7 +592,7 @@ pub fn create_example_graphs() -> Vec<(String, String)> {
     line_options.title = "Example Line Graph".to_string();
     line_options.graph_type = GraphType::Line;
     let line_path = format!("{}/line_graph.png", output_dir);
-    if let Ok(_) = save_line_graph(data.clone(), &line_options, &line_path) {
+    if save_line_graph(data.clone(), &line_options, &line_path).is_ok() {
         result.push(("Line".to_string(), line_path));
     }
 
@@ -601,7 +601,7 @@ pub fn create_example_graphs() -> Vec<(String, String)> {
     bar_options.title = "Example Bar Graph".to_string();
     bar_options.graph_type = GraphType::Bar;
     let bar_path = format!("{}/bar_graph.png", output_dir);
-    if let Ok(_) = save_bar_graph(data.clone(), &bar_options, &bar_path) {
+    if save_bar_graph(data.clone(), &bar_options, &bar_path).is_ok() {
         result.push(("Bar".to_string(), bar_path));
     }
 
@@ -610,7 +610,7 @@ pub fn create_example_graphs() -> Vec<(String, String)> {
     scatter_options.title = "Example Scatter Graph".to_string();
     scatter_options.graph_type = GraphType::Scatter;
     let scatter_path = format!("{}/scatter_graph.png", output_dir);
-    if let Ok(_) = save_scatter_graph(data.clone(), &scatter_options, &scatter_path) {
+    if save_scatter_graph(data.clone(), &scatter_options, &scatter_path).is_ok() {
         result.push(("Scatter".to_string(), scatter_path));
     }
 
@@ -619,7 +619,7 @@ pub fn create_example_graphs() -> Vec<(String, String)> {
     area_options.title = "Example Area Graph".to_string();
     area_options.graph_type = GraphType::Area;
     let area_path = format!("{}/area_graph.png", output_dir);
-    if let Ok(_) = save_area_graph(data.clone(), &area_options, &area_path) {
+    if save_area_graph(data.clone(), &area_options, &area_path).is_ok() {
         result.push(("Area".to_string(), area_path));
     }
 
