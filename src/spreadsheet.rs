@@ -439,10 +439,8 @@ impl Spreadsheet {
 
     pub fn rec_find_cycle_using_stack<'a>(
         &'a self,
-        r1: i16,
-        r2: i16,
-        c1: i16,
-        c2: i16,
+        (r1, r2): (i16, i16),
+        (c1, c2): (i16, i16),
         range_bool: bool,
         visited: &mut BTreeSet<(i16, i16)>,
         stack: &mut Vec<&'a Box<Cell>>,
@@ -516,12 +514,9 @@ impl Spreadsheet {
     // Entry point for cycle detection - checks if a given cell could create a cycle
     pub fn first_step_find_cycle(
         &self,
-        r_: i16,
-        c_: i16,
-        r1: i16,
-        r2: i16,
-        c1: i16,
-        c2: i16,
+        (r_,c_): (i16, i16),
+        (r1, c1): (i16, i16),
+        (r2, c2): (i16, i16),
         range_bool: bool,
     ) -> bool {
         // Parse the cell name to get row and column indices
@@ -547,7 +542,7 @@ impl Spreadsheet {
         stack.push(start_node);
 
         // Call the recursive helper to find cycles
-        self.rec_find_cycle_using_stack(r1, r2, c1, c2, range_bool, &mut visited, &mut stack)
+        self.rec_find_cycle_using_stack((r1, r2), (c1, c2), range_bool, &mut visited, &mut stack)
     }
 
     pub fn remove_old_dependents(&mut self, r: i16, c: i16) {
@@ -634,12 +629,9 @@ impl Spreadsheet {
 
     pub fn update_dependencies(
         &mut self,
-        r: i16,
-        c: i16,
-        start_row: i16,
-        start_col: i16,
-        end_row: i16,
-        end_col: i16,
+        (r, c): (i16, i16),
+        (start_row,start_col): (i16, i16),
+        (end_row,end_col): (i16, i16),
         is_range: bool,
     ) -> i32 {
         // eprintln!("Entered update_dependencies for cell: {cell_name} with formula: {formula}");
@@ -808,7 +800,7 @@ impl Spreadsheet {
             let mut cnter = 0;
             for r in start_row..=end_row {
                 for c in start_col..=end_col {
-                    self.update_dependencies(r, c, 0, 0, 0, 0, false);
+                    self.update_dependencies((r, c), (0, 0), (0, 0), false);
                     let dest_index = ((r as isize + row_offset - 1) * self.cols as isize
                         + (c as isize + col_offset - 1))
                         as usize;
@@ -895,7 +887,7 @@ impl Spreadsheet {
         // println!("find_depends took {:?}", start_time.elapsed().as_secs_f64());
         // new
         // Check for cycles
-        if self.first_step_find_cycle(row, col, r1, r2, c1, c2, is_range) {
+        if self.first_step_find_cycle((row, col), (r1, c1), (r2, c2), is_range) {
             *status_out = "Cycle Detected".to_string();
             return;
         }
@@ -908,7 +900,7 @@ impl Spreadsheet {
         // new
 
         // Update dependencies
-        self.update_dependencies(row, col, r1, c1, r2, c2, is_range);
+        self.update_dependencies((row, col), (r1, c1), (r2, c2), is_range);
 
         // println!("cell dependency of A1 are : {:?}", self.cells[0].as_ref().unwrap().dependents);
         // println!("cell dependency of current cell are : {:?}", self.cells[index].as_ref().unwrap().dependents);
