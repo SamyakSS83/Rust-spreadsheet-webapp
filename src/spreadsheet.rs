@@ -26,6 +26,7 @@ pub struct Spreadsheet {
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
+#[derive(PartialEq)]
 pub enum ParsedRHS {
     Function {
         name: FunctionName,
@@ -42,12 +43,14 @@ pub enum ParsedRHS {
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
+#[derive(PartialEq)]
 pub enum Operand {
     Number(i32),
     Cell(i16, i16), // (row, col)
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[derive(PartialEq)]
 pub enum FunctionName {
     Min,
     Max,

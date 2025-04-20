@@ -854,7 +854,6 @@ mod spreadsheet_tests {
         // C1 has no dependencies
         let a1_idx = 0 * 10 + 0;
         let b1_idx = 0 * 10 + 1;
-        let c1_idx = 0 * 10 + 2;
 
         if let Some(cell_a1) = sheet.cells[a1_idx].as_mut() {
             cell_dep_insert(cell_a1, 1, 2); // A1 points to B1
@@ -874,6 +873,53 @@ mod spreadsheet_tests {
             assert_eq!(sorted[0], (1, 1)); // C1
             assert_eq!(sorted[1], (1, 2)); // B1
             assert_eq!(sorted[2], (1, 3)); // A1
+        }
+
+
+        // Test topo sort for large spreadsheet (enhanced check) 
+        let mut sheet = Spreadsheet::spreadsheet_create(100, 100).unwrap();
+        // set_cell(sheet, "B1", "SUM(A1:A10)");
+        // set_cell(sheet, "B2", "MAX(A1:A10)");
+        // set_cell(sheet, "B3", "MIN(A1:A10)");
+        // set_cell(sheet, "B4", "AVG(A1:A10)");
+        // set_cell(sheet, "B5", "STDEV(A1:A10)");
+    
+        // // Set formulas in C1:C5
+        // set_cell(sheet, "C1", "SUM(B1:B5)");
+        // set_cell(sheet, "C2", "MAX(B1:B5)");
+        // set_cell(sheet, "C3", "MIN(B1:B5)");
+        // set_cell(sheet, "C4", "AVG(B1:B5)");
+        // set_cell(sheet, "C5", "STDEV(B1:B5)");
+
+        // ADD B1 till B5 to A1:A10
+        for i in 1..=10 {
+            for j in 1..=5 {
+                let cell_idx = (i-1) * 100;
+                if let Some(cell) = sheet.cells[cell_idx].as_mut() {
+                    cell_dep_insert( cell, j, 2);
+                }
+            }
+        }
+
+        // ADD C1 till C5 to B1:B10
+        for i in 1..=10 {
+            for j in 1..=5 {
+                let cell_idx = (i-1) * 100 + 1;
+                if let Some(cell) = sheet.cells[cell_idx].as_mut() {
+                    cell_dep_insert( cell, j, 3);
+                }
+            }
+        }
+
+        let sorted_cells = sheet.topo_sort(&sheet.cells[0].as_ref().unwrap());
+        // the vector should be something of the type... A1 then (B1 to B5 in any order) then (C1:C5 in any order)
+        assert_eq!(sorted_cells.len(), 11);
+        assert_eq!(sorted_cells[0],(1, 1)); // A1
+        for i in 1..=5 {
+            assert_eq!(sorted_cells[i], (6-i as i16, 2)); // B1 to B5
+        }
+        for i in 1..=5 {
+            assert_eq!(sorted_cells[i+5], (6-i as i16, 3)); // C1 to C5
         }
     }
 
@@ -918,17 +964,102 @@ mod spreadsheet_tests {
             ),
         };
 
+        let avg_expr = ParsedRHS::Function {
+            name: FunctionName::Avg,
+            args: (
+                Operand::Cell(1, 1), // A1
+                Operand::Cell(2, 1), // A2
+            ),
+        };
+        sheet.spreadsheet_set_cell_value(3, 1, avg_expr, &mut status);
+        assert_eq!(status, "ok");
+
+        let a3_idx = 2 * 10 + 0;
+        if let Some(cell) = sheet.cells[a3_idx].as_ref() {
+            assert_eq!(cell.value, 42); // (42 + 42) / 2
+            assert!(!cell.error);
+        }
+
+        let min_expr = ParsedRHS::Function {
+            name: FunctionName::Min,
+            args: (
+                Operand::Cell(1, 1), // A1
+                Operand::Cell(2, 1), // A2
+            ),
+        };
+        sheet.spreadsheet_set_cell_value(4, 1, min_expr, &mut status);
+        assert_eq!(status, "ok");
+        let a4_idx = 3 * 10 + 0;
+        if let Some(cell) = sheet.cells[a4_idx].as_ref() {
+            assert_eq!(cell.value, 42); // min(42, 42)
+            assert!(!cell.error);
+        }
+
+        let  max_expr = ParsedRHS::Function {
+            name: FunctionName::Max,
+            args: (
+                Operand::Cell(1, 1), // A1
+                Operand::Cell(2, 1), // A2
+            ),
+        };
+        sheet.spreadsheet_set_cell_value(5, 1, max_expr, &mut status);
+        assert_eq!(status, "ok");   
+        let a5_idx = 4 * 10 + 0;
+        if let Some(cell) = sheet.cells[a5_idx].as_ref() {
+            assert_eq!(cell.value, 42); // max(42, 42)
+            assert!(!cell.error);
+        }
+
+        let stdev_expr = ParsedRHS::Function {
+            name: FunctionName::Stdev,
+            args: (
+                Operand::Cell(1, 1), // A1
+                Operand::Cell(2, 1), // A2
+            ),
+        };
+        sheet.spreadsheet_set_cell_value(6, 1, stdev_expr, &mut status);
+        assert_eq!(status, "ok");
+        let a6_idx = 5 * 10 + 0;
+        if let Some(cell) = sheet.cells[a6_idx].as_ref() {
+            assert_eq!(cell.value, 0); // stdev(42, 42) = 0
+            assert!(!cell.error);
+        }
+
         // First set B1 to some value
         let b1_val_expr = ParsedRHS::SingleValue(Operand::Number(58));
         sheet.spreadsheet_set_cell_value(1, 2, b1_val_expr, &mut status);
+
 
         // Now set A3 to be SUM(A1:B1)
         sheet.spreadsheet_set_cell_value(3, 1, sum_expr, &mut status);
         assert_eq!(status, "ok");
 
-        let a3_idx = 2 * 10 + 0;
         if let Some(cell) = sheet.cells[a3_idx].as_ref() {
             assert_eq!(cell.value, 100); // 42 + 58
+            assert!(!cell.error);
+        }
+
+        // Test for arithmetic expression type formula
+        let arith_expr = ParsedRHS::Arithmetic {
+            lhs: Operand::Cell(1, 1), // A1
+            operator: '+',
+            rhs: Operand::Cell(2, 1), // A2
+        };
+        sheet.spreadsheet_set_cell_value(7, 1, arith_expr, &mut status);
+        assert_eq!(status, "ok");
+        let a7_idx = 6 * 10 + 0;
+        if let Some(cell) = sheet.cells[a7_idx].as_ref() {
+            assert_eq!(cell.value, 84); // 42 + 42
+            assert!(!cell.error);
+        }
+
+        // Test for sleep type formula
+        let sleep_expr = ParsedRHS::Sleep(Operand::Number(2)); // Sleep for 2 seconds
+        sheet.spreadsheet_set_cell_value(8, 1, sleep_expr, &mut status);
+        assert_eq!(status, "ok");
+        let a8_idx = 7 * 10 + 0;
+        if let Some(cell) = sheet.cells[a8_idx].as_ref() {
+            assert_eq!(cell.value, 2); // Sleep function should return cell value
             assert!(!cell.error);
         }
     }
@@ -944,24 +1075,38 @@ mod spreadsheet_tests {
         assert!(valid);
         assert_eq!(row, 1);
         assert_eq!(col, 1);
+        assert_eq!(expr, ParsedRHS::SingleValue(Operand::Number(42)));
 
         // Cell reference
         let (valid, row, col, expr) = sheet.is_valid_command("B2", "A1");
         assert!(valid);
         assert_eq!(row, 2);
         assert_eq!(col, 2);
+        assert_eq!(expr, ParsedRHS::SingleValue(Operand::Cell(1, 1)));
 
         // Arithmetic
         let (valid, row, col, expr) = sheet.is_valid_command("C3", "A1+B2");
         assert!(valid);
         assert_eq!(row, 3);
         assert_eq!(col, 3);
+        assert_eq!(expr, ParsedRHS::Arithmetic {
+            lhs: Operand::Cell(1, 1),
+            operator: '+',
+            rhs: Operand::Cell(2, 2),
+        });
 
         // Function
         let (valid, row, col, expr) = sheet.is_valid_command("D4", "SUM(A1:B2)");
         assert!(valid);
         assert_eq!(row, 4);
         assert_eq!(col, 4);
+        assert_eq!(expr, ParsedRHS::Function {
+            name: FunctionName::Sum,
+            args: (
+                Operand::Cell(1, 1),
+                Operand::Cell(2, 2),
+            ),
+        });
 
         // Test invalid commands
 
@@ -998,6 +1143,208 @@ mod spreadsheet_tests {
         
         let (valid, _, _, _) = sheet.is_valid_command("", "");
         assert!(!valid); // Empty cell and formula
+
+        // Test arbitrary is_Valid commands 
+        // give cell name A1 , formula = -1 , +1 , +2, -4 , 2147483647,-2147483648, 00, 09, 0090, -0090, -1*-1,-1*+1, -1+-1,-1-+1,-1/+1,-1/-1,1/0,2/0,A2*B1,-1*B1, +3*B1,B1+2,B1/0,C1-34,C1/-3,D1*-4,D1+-6,C1-+3
+        let (valid, row, col,expr) = sheet.is_valid_command("A1", "-1");
+        assert!(valid); // valid number
+        assert_eq!(row, 1);
+        assert_eq!(col, 1);
+        assert_eq!(expr, ParsedRHS::SingleValue(Operand::Number(-1)));
+
+        let (valid, row, col,expr) = sheet.is_valid_command("A1", "+1");
+        assert!(valid); // valid number
+        assert_eq!(row, 1);
+        assert_eq!(col, 1);
+        assert_eq!(expr, ParsedRHS::SingleValue(Operand::Number(1)));
+
+        let (valid, row, col,expr) = sheet.is_valid_command("A1", "+2");
+        assert!(valid); // valid number
+        assert_eq!(row, 1);
+        assert_eq!(col, 1);
+        assert_eq!(expr, ParsedRHS::SingleValue(Operand::Number(2)));
+
+        let (valid, _, _,expr) = sheet.is_valid_command("A1", "-4");
+        assert!(valid); // valid number
+        assert_eq!(expr, ParsedRHS::SingleValue(Operand::Number(-4)));
+
+        let (valid, _, _,expr) = sheet.is_valid_command("A1", "2147483647");
+        assert!(valid); // valid number
+        assert_eq!(expr, ParsedRHS::SingleValue(Operand::Number(2147483647)));
+
+        let (valid, _, _,expr) = sheet.is_valid_command("A1", "-2147483648");
+        assert!(valid); // valid number
+        assert_eq!(expr, ParsedRHS::SingleValue(Operand::Number(-2147483648)));
+        let (valid, _, _,expr) = sheet.is_valid_command("A1", "00");
+        assert!(valid); // valid number
+        assert_eq!(expr, ParsedRHS::SingleValue(Operand::Number(0)));
+
+        let (valid, _, _,expr) = sheet.is_valid_command("A1", "09");
+        assert!(valid); // valid number
+        assert_eq!(expr, ParsedRHS::SingleValue(Operand::Number(9)));
+
+        let (valid, _, _,expr) = sheet.is_valid_command("A1", "0090");
+        assert!(valid); // valid number
+        assert_eq!(expr, ParsedRHS::SingleValue(Operand::Number(90)));
+
+        let (valid, _, _,expr) = sheet.is_valid_command("A1", "-0090");
+        assert!(valid); // valid number
+        assert_eq!(expr, ParsedRHS::SingleValue(Operand::Number(-90)));
+
+        let (valid, _, _,expr) = sheet.is_valid_command("A1", "-1*-1");
+        assert!(valid); // valid number
+        assert_eq!(expr, ParsedRHS::Arithmetic {
+            lhs: Operand::Number(-1),
+            operator: '*',
+            rhs: Operand::Number(-1),
+        });
+
+        let (valid, _, _,expr) = sheet.is_valid_command("A1", "-1*+1");
+        assert!(valid); // valid number
+        assert_eq!(expr, ParsedRHS::Arithmetic {
+            lhs: Operand::Number(-1),
+            operator: '*',
+            rhs: Operand::Number(1),
+        });
+
+        let (valid, _, _,expr) = sheet.is_valid_command("A1", "-1+-1");
+        assert!(valid); // valid number
+        assert_eq!(expr, ParsedRHS::Arithmetic {
+            lhs: Operand::Number(-1),
+            operator: '+',
+            rhs: Operand::Number(-1),
+        });
+
+        let (valid, _, _,expr) = sheet.is_valid_command("A1", "-1-+1");
+        assert!(valid); // valid number
+        assert_eq!(expr, ParsedRHS::Arithmetic {
+            lhs: Operand::Number(-1),
+            operator: '-',
+            rhs: Operand::Number(1),
+        });
+
+        let (valid, _, _,expr) = sheet.is_valid_command("A1", "-1/+1");
+        assert!(valid); // valid number
+        assert_eq!(expr, ParsedRHS::Arithmetic {
+            lhs: Operand::Number(-1),
+            operator: '/',
+            rhs: Operand::Number(1),
+        });
+
+        let (valid, _, _,expr) = sheet.is_valid_command("A1", "-1/-1");
+        assert!(valid); // valid number
+        assert_eq!(expr, ParsedRHS::Arithmetic {
+            lhs: Operand::Number(-1),
+            operator: '/',
+            rhs: Operand::Number(-1),
+        });
+
+        let (valid, _, _,expr) = sheet.is_valid_command("A1", "1/0");
+        assert!(valid); // valid number
+        assert_eq!(expr, ParsedRHS::Arithmetic {
+            lhs: Operand::Number(1),
+            operator: '/',
+            rhs: Operand::Number(0),
+        });
+
+        let (valid, _, _,expr) = sheet.is_valid_command("A1", "2/0");
+        assert!(valid); // valid number
+        assert_eq!(expr, ParsedRHS::Arithmetic {
+            lhs: Operand::Number(2),
+            operator: '/',
+            rhs: Operand::Number(0),
+        });
+
+        let (valid, _, _,expr) = sheet.is_valid_command("A1", "A2*B1");
+        assert!(valid); // valid number
+        assert_eq!(expr, ParsedRHS::Arithmetic {
+            lhs: Operand::Cell(2, 1),
+            operator: '*',
+            rhs: Operand::Cell(1, 2),
+        });
+
+        let (valid, _, _,expr) = sheet.is_valid_command("A1", "-1*B1");
+        assert!(valid); // valid number
+        assert_eq!(expr, ParsedRHS::Arithmetic {
+            lhs: Operand::Number(-1),
+            operator: '*',
+            rhs: Operand::Cell(1, 2),
+        });
+
+        let (valid, _, _,expr) = sheet.is_valid_command("A1", "+3*B1");
+        assert!(valid); // valid number
+        assert_eq!(expr, ParsedRHS::Arithmetic {
+            lhs: Operand::Number(3),
+            operator: '*',
+            rhs: Operand::Cell(1, 2),
+        });
+
+        let (valid, _, _,expr) = sheet.is_valid_command("A1", "B1+2");
+        assert!(valid); // valid number
+        assert_eq!(expr, ParsedRHS::Arithmetic {
+            lhs: Operand::Cell(1, 2),
+            operator: '+',
+            rhs: Operand::Number(2),
+        });
+
+        let (valid, _, _,expr) = sheet.is_valid_command("A1", "B1/0");
+        assert!(valid); // valid number
+        assert_eq!(expr, ParsedRHS::Arithmetic {
+            lhs: Operand::Cell(1, 2),
+            operator: '/',
+            rhs: Operand::Number(0),
+        });
+
+        let (valid, _, _,expr) = sheet.is_valid_command("A1", "C1-34");
+        assert!(valid); // valid number
+        assert_eq!(expr, ParsedRHS::Arithmetic {
+            lhs: Operand::Cell(1, 3),
+            operator: '-',
+            rhs: Operand::Number(34),
+        });
+        let (valid, _, _,expr) = sheet.is_valid_command("A1", "C1/-3");
+        assert!(valid); // valid number
+        assert_eq!(expr, ParsedRHS::Arithmetic {
+            lhs: Operand::Cell(1, 3),
+            operator: '/',
+            rhs: Operand::Number(-3),
+        });
+
+
+        let (valid, _, _,expr) = sheet.is_valid_command("A1", "D1*-4");
+        assert!(valid); // valid number
+        assert_eq!(expr, ParsedRHS::Arithmetic {
+            lhs: Operand::Cell(1, 4),
+            operator: '*',
+            rhs: Operand::Number(-4),
+        });
+
+        let (valid, _, _,expr) = sheet.is_valid_command("A1", "D1+-6");
+        assert!(valid); // valid number
+        assert_eq!(expr, ParsedRHS::Arithmetic {
+            lhs: Operand::Cell(1, 4),
+            operator: '+',
+            rhs: Operand::Number(-6),
+        });
+
+        let (valid, _, _,expr) = sheet.is_valid_command("A1", "C1-+3");
+        assert!(valid); // valid number
+        assert_eq!(expr, ParsedRHS::Arithmetic {
+            lhs: Operand::Cell(1, 3),
+            operator: '-',
+            rhs: Operand::Number(3),
+        });
+
+        let (valid, _, _,expr) = sheet.is_valid_command("A1", "C1-+3");
+        assert!(valid); // valid number
+        assert_eq!(expr, ParsedRHS::Arithmetic {
+            lhs: Operand::Cell(1, 3),
+            operator: '-',
+            rhs: Operand::Number(3),
+        });
+        
+        
+
     }
 
     #[test]
