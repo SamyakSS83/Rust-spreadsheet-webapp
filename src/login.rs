@@ -7,7 +7,7 @@ use axum::extract::FromRef;
 #[cfg(feature = "web")]
 use axum::{
     Form, Json,
-    extract::{Query, State},
+    extract::{Query, State, Path},
     http::{StatusCode, header},
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
@@ -23,6 +23,12 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime};
 use uuid::Uuid;
+#[cfg(feature = "web")]
+use std::{fs, fs::create_dir_all, path::PathBuf};
+#[cfg(feature = "web")]
+use crate::saving;
+#[cfg(feature = "web")]
+use crate::spreadsheet::Spreadsheet;
 
 // User data structures
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -64,18 +70,18 @@ const SESSION_DURATION: u64 = 24 * 60 * 60; // 24 hours in seconds
 // Initialization function to ensure database structure exists
 pub fn init_database() -> std::io::Result<()> {
     // Create database directory if it doesn't exist
-    if !Path::new(DATABASE_DIR).exists() {
+    if !std::path::Path::new(DATABASE_DIR).exists() {
         create_dir_all(DATABASE_DIR)?;
     }
 
     // Create Admin folder
-    let admin_dir = Path::new(DATABASE_DIR).join("Admin");
+    let admin_dir = std::path::Path::new(DATABASE_DIR).join("Admin");
     if !admin_dir.exists() {
         create_dir_all(&admin_dir)?;
     }
 
     // Create users.json if it doesn't exist
-    let users_path = Path::new(USERS_FILE);
+    let users_path = std::path::Path::new(USERS_FILE);
     if !users_path.exists() {
         let mut file = File::create(users_path)?;
         file.write_all(b"{}")?;
@@ -136,7 +142,7 @@ pub fn register_user(username: &str, password: &str) -> Result<(), String> {
     let password_hash = hash_password(password)?;
 
     // Create user directory
-    let user_dir = Path::new(DATABASE_DIR).join(username);
+    let user_dir = std::path::Path::new(DATABASE_DIR).join(username);
     if create_dir_all(&user_dir).is_err() {
         return Err("Failed to create user directory".to_string());
     }
@@ -321,109 +327,66 @@ pub async fn require_auth(
 #[cfg(feature = "web")]
 pub async fn list_files(
     jar: CookieJar,
-    axum::extract::Path(username): axum::extract::Path<String>,
+    Path(username): Path<String>,
 ) -> Result<Html<String>, (StatusCode, &'static str)> {
-    // Verify user is authorized
-    if let Some(session_cookie) = jar.get("session") {
-        if let Some(current_user) = validate_session(session_cookie.value()) {
-            // Check if the current user is trying to access their own files
-            if current_user == username {
-                let files = get_user_files(&username);
+    // 1) auth check
+    if let Some(cookie) = jar.get("session") {
+        if let Some(current) = validate_session(cookie.value()) {
+            if current == username {
+                // 2) load list.json
+                let user_dir = PathBuf::from(DATABASE_DIR).join(&username);
+                let list_path = user_dir.join("list.json");
+                let entries: Vec<SheetEntry> = if list_path.exists() {
+                    let data = fs::read_to_string(&list_path).unwrap_or_default();
+                    serde_json::from_str(&data).unwrap_or_default()
+                } else {
+                    Vec::new()
+                };
 
-                // Generate HTML for file list
-                let mut html = String::from(
+                // 3) render HTML
+                let mut html = format!(
                     "<!DOCTYPE html>
-                <html>
-                <head>
-                    <title>Your Files</title>
-                    <style>
-                        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
-                        h1 { color: #333; }
-                        .file-list { margin-top: 20px; }
-                        .file-item { 
-                            padding: 10px; 
-                            border: 1px solid #ddd; 
-                            margin-bottom: 10px;
-                            border-radius: 4px;
-                        }
-                        .file-item:hover { background-color: #f5f5f5; }
-                        .file-link { 
-                            text-decoration: none; 
-                            color: #2196F3; 
-                            font-weight: bold;
-                            display: block;
-                        }
-                        .file-info { 
-                            color: #666; 
-                            font-size: 0.8em;
-                            margin-top: 5px;
-                        }
-                        .new-sheet { 
-                            display: inline-block;
-                            margin-top: 20px;
-                            padding: 10px 15px;
-                            background-color: #4CAF50;
-                            color: white;
-                            text-decoration: none;
-                            border-radius: 4px;
-                        }
-                        .logout {
-                            position: absolute;
-                            top: 20px;
-                            right: 20px;
-                            padding: 5px 10px;
-                            background-color: #f44336;
-                            color: white;
-                            text-decoration: none;
-                            border-radius: 4px;
-                        }
-                    </style>
-                </head>
-                <body>
-                    <a href='/logout' class='logout'>Logout</a>
-                    <h1>Welcome, ",
+                    <html><head><title>{0}’s Sheets</title></head><body>
+                    <h1>{0}’s Spreadsheets</h1>
+                    <a href=\"/{0}/create\">📄 Create New Spreadsheet</a>
+                    <div class=\"file-list\">",
+                    username
                 );
 
-                html.push_str(&username);
-                html.push_str("</h1>");
-
-                if files.is_empty() {
-                    html.push_str("<p>You don't have any spreadsheets yet.</p>");
-                } else {
-                    html.push_str("<div class='file-list'>");
-                    html.push_str("<h2>Your Spreadsheets:</h2>");
-
-                    for file in files {
-                        let file_path = format!("/{}/{}", username, file.name);
-                        html.push_str("<div class='file-item'>");
-                        html.push_str(&format!(
-                            "<a href='{}' class='file-link'>{}</a>",
-                            file_path, file.name
-                        ));
-
-                        // Format timestamps
-                        let modified = chrono::DateTime::<chrono::Utc>::from(file.modified)
-                            .format("%Y-%m-%d %H:%M:%S");
-
-                        html.push_str(&format!(
-                            "<div class='file-info'>Last modified: {}</div>",
-                            modified
-                        ));
-                        html.push_str("</div>");
-                    }
-
-                    html.push_str("</div>");
+                for e in entries {
+                    html.push_str(&format!(
+                        "<div>
+                            <a href=\"/{u}/{n}\">{n}</a> — {s}
+                            <form style=\"display:inline\" method=\"post\" action=\"/{u}/{n}/delete\">
+                              <button>🗑️ Delete</button>
+                            </form>
+                          </div>",
+                        u = username,
+                        n = e.name,
+                        s = e.status,
+                    ));
                 }
 
-                html.push_str(
-                    "<a href='/sheet?rows=10&cols=10' class='new-sheet'>Create New Spreadsheet</a>",
-                );
-                html.push_str("</body></html>");
-
+                html.push_str("</div></body></html>");
                 return Ok(Html(html));
             }
         }
     }
-
     Err((StatusCode::UNAUTHORIZED, "Unauthorized"))
+}
+
+#[cfg(feature = "web")]
+#[derive(Debug, Serialize, Deserialize)]
+struct SheetEntry {
+    name: String,
+    status: String, // "public" or "private"
+}
+
+#[cfg(feature = "web")]
+#[derive(Debug, Deserialize)]
+pub struct CreateSheetForm {
+    pub name: String,
+    pub rows: u16,
+    pub cols: u16,
+    pub status: String,
 }

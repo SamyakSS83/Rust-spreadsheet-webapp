@@ -113,7 +113,8 @@ pub async fn run(rows: i16, cols: i16) -> Result<(), Box<dyn std::error::Error>>
         .route("/api/save_with_name", post(save_spreadsheet_with_name))
         // user file routes
         .route("/:username", get(login::list_files))
-        .route("/:username/:filename", get(load_user_file))
+        .route("/:username/create", get(login::serve_create_sheet_form).post(login::handle_create_sheet))
+        .route("/:username/:sheet_name/delete", post(login::handle_delete_sheet))
         // only these get require_auth
         .layer(middleware::from_fn(login::require_auth));
 
@@ -124,7 +125,7 @@ pub async fn run(rows: i16, cols: i16) -> Result<(), Box<dyn std::error::Error>>
         .with_state(app_state);
 
     // Start server
-    let listener = TcpListener::bind("127.0.0.1:3000").await?;
+    let listener = TcpListener::bind("0.0.0.0:3000").await?;
     println!("Listening on http://127.0.0.1:3000");
     axum::serve(listener, app).await?;
 
