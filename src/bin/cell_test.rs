@@ -110,7 +110,7 @@ mod cell_tests {
         cell_dep_remove(&mut cell, 5, 5);
         cell_dep_remove(&mut cell, 6, 6);
 
-        // check 
+        // check
         assert!(!cell_contains(&cell, 4, 4));
         assert!(!cell_contains(&cell, 5, 5));
         assert!(!cell_contains(&cell, 6, 6));

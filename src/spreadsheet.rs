@@ -646,7 +646,6 @@ impl Spreadsheet {
         for (row, col) in sorted_cells.iter() {
             let sorted_index = (*row - 1) as usize * self.cols as usize + (*col - 1) as usize;
 
-
             let formula = &self.cells[sorted_index].as_ref().unwrap().formula;
 
             let (value, error_cell) = self.spreadsheet_evaluate_expression(formula, *row, *col);
