@@ -1,8 +1,6 @@
 #![cfg(not(tarpaulin_include))]
 
 #[cfg(feature = "web")]
-use std::path::PathBuf;
-#[cfg(feature = "web")]
 use crate::mailer::{Mailer, generate_reset_code};
 #[cfg(feature = "web")]
 use crate::saving;
@@ -31,77 +29,143 @@ use std::collections::HashMap;
 use std::fs::{self, File, create_dir_all};
 use std::io::{Read, Write};
 use std::path::Path; // Keep this import
+#[cfg(feature = "web")]
+use std::path::PathBuf;
 use std::sync::RwLock;
 use std::time::{Duration, SystemTime};
 #[cfg(feature = "web")]
 use urlencoding;
 use uuid::Uuid;
 
-// User data structures
+/// User data structure representing a registered application user
+///
+/// This structure contains all the information about a registered user,
+/// including authentication details and password reset information.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct User {
+    /// Username (unique identifier for the user)
     pub username: String,
+
+    /// Email address (used for password recovery)
     pub email: String,
+
+    /// Argon2 hash of the user's password
     pub password_hash: String,
-    // #[cfg(feature = "web")]
+
+    /// Password reset code (if a reset has been requested)
     pub reset_code: Option<String>,
-    // #[cfg(feature = "web")]
+
+    /// Expiration time for the reset code
     pub reset_code_expires: Option<SystemTime>,
 }
 
+/// Credential data for login and registration
+///
+/// Used to receive login and registration form data from the client.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UserCredentials {
+    /// Username for login/registration
     pub username: String,
+
+    /// Email address (optional for login, required for registration)
     #[serde(default)]
     pub email: String,
+
+    /// Password in plaintext (only transmitted, never stored)
     pub password: String,
 }
 
+/// Password reset request data
+///
+/// Used to receive a password reset request form containing just an email address.
 #[cfg(feature = "web")]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PasswordResetRequest {
+    /// Email address to send the reset code to
     pub email: String,
 }
 
+/// Password reset confirmation data
+///
+/// Used to receive a password reset confirmation form with the reset code and new password.
 #[cfg(feature = "web")]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PasswordResetConfirm {
+    /// Email address that requested the reset
     pub email: String,
+
+    /// Reset code that was sent to the email
     pub reset_code: String,
+
+    /// New password to set
     pub new_password: String,
 }
 
+/// Password change request data
+///
+/// Used to receive a password change form from an authenticated user.
 #[cfg(feature = "web")]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PasswordChangeRequest {
+    /// Username of the user changing their password
     pub username: String,
+
+    /// Current password for verification
     pub old_password: String,
+
+    /// New password to set
     pub new_password: String,
+
+    /// Confirmation of the new password (must match new_password)
     pub confirm_password: String,
 }
 
+/// User file metadata
+///
+/// Represents a file owned by a user in the system.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UserFile {
+    /// Name of the file
     pub name: String,
+
+    /// Path to the file on disk
     pub path: String,
+
+    /// Creation timestamp
     pub created: SystemTime,
+
+    /// Last modification timestamp
     pub modified: SystemTime,
 }
 
+/// Spreadsheet entry for user's file listing
+///
+/// Used to store information about a user's spreadsheet files.
 #[cfg(feature = "web")]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SheetEntry {
+    /// Name of the spreadsheet
     pub name: String,
-    pub status: String, // "public" or "private"
+
+    /// Visibility status: "public" or "private"
+    pub status: String,
 }
 
-// Session management
+/// User session data
+///
+/// Represents an authenticated user session.
 #[derive(Debug, Clone)]
 pub struct Session {
+    /// Username of the authenticated user
     pub user_id: String,
+
+    /// Time when the session expires
     pub expires_at: SystemTime,
 }
 
+/// Global sessions storage
+///
+/// Stores all active user sessions in a thread-safe map.
 lazy_static! {
     static ref SESSIONS: RwLock<HashMap<String, Session>> = RwLock::new(HashMap::new());
 }
@@ -111,7 +175,22 @@ const USERS_FILE: &str = "database/users.json";
 const DATABASE_DIR: &str = "database";
 const SESSION_DURATION: u64 = 24 * 60 * 60; // 24 hours in seconds
 
-// Initialization function to ensure database structure exists
+/// Initialize the database structure
+///
+/// Creates the database directory and users file if they don't exist.
+/// This should be called before any other database operations.
+///
+/// # Returns
+/// * `std::io::Result<()>` - Success or an IO error
+///
+/// # Examples
+/// ```
+/// use cop::login::init_database;
+///
+/// if let Err(e) = init_database() {
+///     eprintln!("Failed to initialize database: {}", e);
+/// }
+/// ```
 pub fn init_database() -> std::io::Result<()> {
     // Create database directory if it doesn't exist
     if !std::path::Path::new(DATABASE_DIR).exists() {
@@ -128,7 +207,15 @@ pub fn init_database() -> std::io::Result<()> {
     Ok(())
 }
 
-// User management functions
+/// Get all registered users
+///
+/// Reads the users file and returns a map of all registered users.
+///
+/// # Returns
+/// * `Result<HashMap<String, User>, String>` - Map of usernames to user objects, or an error
+///
+/// # Errors
+/// * Returns an error if the users file cannot be opened, read, or parsed
 pub fn get_users() -> Result<HashMap<String, User>, String> {
     let mut file = match File::open(USERS_FILE) {
         Ok(file) => file,
@@ -146,6 +233,18 @@ pub fn get_users() -> Result<HashMap<String, User>, String> {
     }
 }
 
+/// Save the users map to disk
+///
+/// Writes the users map to the users file.
+///
+/// # Arguments
+/// * `users` - The users map to save
+///
+/// # Returns
+/// * `Result<(), String>` - Success or an error message
+///
+/// # Errors
+/// * Returns an error if the users file cannot be created or written to
 pub fn save_users(users: &HashMap<String, User>) -> Result<(), String> {
     let json = match serde_json::to_string_pretty(users) {
         Ok(json) => json,
@@ -164,7 +263,22 @@ pub fn save_users(users: &HashMap<String, User>) -> Result<(), String> {
     Ok(())
 }
 
-// Register a new user
+/// Register a new user
+///
+/// Creates a new user account with the provided username, email, and password.
+/// The password is hashed before storage.
+///
+/// # Arguments
+/// * `username` - Unique username for the new account
+/// * `email` - Email address for the user
+/// * `password` - Plain text password (will be hashed)
+///
+/// # Returns
+/// * `Result<(), String>` - Success or an error message
+///
+/// # Errors
+/// * Returns an error if the username or email is already in use
+/// * Returns an error if any required fields are empty
 pub fn register_user(username: &str, email: &str, password: &str) -> Result<(), String> {
     if username.is_empty() || password.is_empty() || email.is_empty() {
         return Err("Username, email and password cannot be empty".to_string());
@@ -205,7 +319,19 @@ pub fn register_user(username: &str, email: &str, password: &str) -> Result<(), 
     Ok(())
 }
 
-// Verify user credentials
+/// Verify user credentials
+///
+/// Checks whether the provided username and password match a registered user.
+///
+/// # Arguments
+/// * `username` - Username to verify
+/// * `password` - Password to verify
+///
+/// # Returns
+/// * `Result<bool, String>` - True if credentials are valid, false if invalid, or an error
+///
+/// # Errors
+/// * Returns an error if there is a problem accessing the user database
 pub fn verify_user(username: &str, password: &str) -> Result<bool, String> {
     let users = get_users()?;
 
@@ -216,7 +342,18 @@ pub fn verify_user(username: &str, password: &str) -> Result<bool, String> {
     }
 }
 
-// Password hashing functions
+/// Hash a password using Argon2
+///
+/// Creates a cryptographically secure hash of a password using Argon2id.
+///
+/// # Arguments
+/// * `password` - The plaintext password to hash
+///
+/// # Returns
+/// * `Result<String, String>` - The password hash or an error
+///
+/// # Errors
+/// * Returns an error if the password hashing fails
 fn hash_password(password: &str) -> Result<String, String> {
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
@@ -227,6 +364,19 @@ fn hash_password(password: &str) -> Result<String, String> {
     }
 }
 
+/// Verify a password against a stored hash
+///
+/// Checks if a plaintext password matches a stored Argon2 hash.
+///
+/// # Arguments
+/// * `password` - The plaintext password to verify
+/// * `hash` - The stored password hash to check against
+///
+/// # Returns
+/// * `Result<bool, String>` - True if the password matches, false if not, or an error
+///
+/// # Errors
+/// * Returns an error if the hash is in an invalid format
 fn verify_password(password: &str, hash: &str) -> Result<bool, String> {
     let parsed_hash = match PasswordHash::new(hash) {
         Ok(hash) => hash,
@@ -239,7 +389,15 @@ fn verify_password(password: &str, hash: &str) -> Result<bool, String> {
     }
 }
 
-// Session management
+/// Create a new user session
+///
+/// Creates and stores a new session for an authenticated user.
+///
+/// # Arguments
+/// * `username` - The username to create a session for
+///
+/// # Returns
+/// * `String` - A unique session ID
 pub fn create_session(username: &str) -> String {
     let session_id = Uuid::new_v4().to_string();
     let expires_at = SystemTime::now() + Duration::from_secs(SESSION_DURATION);
@@ -255,6 +413,15 @@ pub fn create_session(username: &str) -> String {
     session_id
 }
 
+/// Validate a session
+///
+/// Checks if a session is valid and not expired.
+///
+/// # Arguments
+/// * `session_id` - The session ID to validate
+///
+/// # Returns
+/// * `Option<String>` - The username for the session if valid, None otherwise
 pub fn validate_session(session_id: &str) -> Option<String> {
     let sessions = SESSIONS.read().unwrap();
 
@@ -267,7 +434,15 @@ pub fn validate_session(session_id: &str) -> Option<String> {
     None
 }
 
-// File management
+/// Get a list of user's files
+///
+/// Retrieves metadata for all spreadsheet files owned by a user.
+///
+/// # Arguments
+/// * `username` - The username to get files for
+///
+/// # Returns
+/// * `Vec<UserFile>` - List of user's files with metadata
 pub fn get_user_files(username: &str) -> Vec<UserFile> {
     let mut files = Vec::new();
     let user_dir = Path::new(DATABASE_DIR).join(username);
@@ -298,17 +473,36 @@ pub fn get_user_files(username: &str) -> Vec<UserFile> {
     files
 }
 
-// Axum handler functions - only compiled when "web" feature is enabled
+// Web handler functions below (only compiled with "web" feature)
+
+/// Serve the login page HTML
+///
+/// # Returns
+/// * `Html<&'static str>` - The login page HTML
 #[cfg(feature = "web")]
 pub async fn serve_login_page() -> Html<&'static str> {
     Html(include_str!("./static/login.html"))
 }
 
+/// Serve the signup page HTML
+///
+/// # Returns
+/// * `Html<&'static str>` - The signup page HTML
 #[cfg(feature = "web")]
 pub async fn serve_signup_page() -> Html<&'static str> {
     Html(include_str!("./static/signup.html"))
 }
 
+/// Handle user login requests
+///
+/// Processes login form submissions, validates credentials, and creates a session if valid.
+///
+/// # Arguments
+/// * `jar` - Cookie jar for storing the session cookie
+/// * `credentials` - Form data containing the username and password
+///
+/// # Returns
+/// * `Response` - Redirect to user page if successful, or error message if not
 #[cfg(feature = "web")]
 #[axum::debug_handler]
 pub async fn handle_login(jar: CookieJar, Form(credentials): Form<UserCredentials>) -> Response {
@@ -328,6 +522,15 @@ pub async fn handle_login(jar: CookieJar, Form(credentials): Form<UserCredential
     }
 }
 
+/// Handle user registration
+///
+/// Processes signup form submissions and creates a new user account.
+///
+/// # Arguments
+/// * `credentials` - Form data containing the username, email, and password
+///
+/// # Returns
+/// * `Result<Redirect, (StatusCode, String)>` - Redirect to login page or error message
 #[cfg(feature = "web")]
 pub async fn handle_signup(
     Form(credentials): Form<UserCredentials>,
@@ -342,6 +545,15 @@ pub async fn handle_signup(
     }
 }
 
+/// Handle user logout
+///
+/// Clears the session cookie and redirects to the login page.
+///
+/// # Arguments
+/// * `jar` - Cookie jar containing the session cookie
+///
+/// # Returns
+/// * `(CookieJar, Redirect)` - Modified cookie jar and redirect response
 #[cfg(feature = "web")]
 pub async fn handle_logout(jar: CookieJar) -> (CookieJar, Redirect) {
     // Remove session cookie
@@ -350,32 +562,34 @@ pub async fn handle_logout(jar: CookieJar) -> (CookieJar, Redirect) {
     (jar.add(cookie), Redirect::to("/login"))
 }
 
-// Middleware to check if user is authenticated
+/// Authentication middleware
+///
+/// Checks if a request is authenticated and allows or redirects accordingly.
+/// Also handles public access to public spreadsheets.
+///
+/// # Arguments
+/// * `jar` - Cookie jar containing session information
+/// * `request` - The incoming request
+/// * `next` - Next middleware in the chain
+///
+/// # Returns
+/// * `Response` - Either passes the request through or redirects to login
 #[cfg(feature = "web")]
 pub async fn require_auth(
     jar: CookieJar,
     mut request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Response {
-    // eprintln!("DEBUG: require_auth called. Request URI: {:?}", request.uri());
-
     // First, if a valid session exists, allow the request.
     if let Some(session_cookie) = jar.get("session") {
-        // eprintln!("DEBUG: Found session cookie: {:?}", session_cookie);
         if let Some(username) = validate_session(session_cookie.value()) {
-            // eprintln!("DEBUG: Valid session for user: {}", username);
             request.extensions_mut().insert(username);
             return next.run(request).await;
-        } else {
-            // eprintln!("DEBUG: Session cookie invalid or expired.");
         }
-    } else {
-        // eprintln!("DEBUG: No session cookie found.");
     }
 
     // No valid session; if the call is for an API endpoint, check if the sheet is public.
     let uri = request.uri().path();
-    // eprintln!("DEBUG: Processing URI: {}", uri);
     if uri.starts_with("/api/") {
         let parts: Vec<&str> = uri.split('/').filter(|s| !s.is_empty()).collect();
         let (owner, sheet_name) = if parts.len() >= 3 {
@@ -386,48 +600,43 @@ pub async fn require_auth(
         } else {
             (String::new(), String::new())
         };
-        // eprintln!("DEBUG: Parsed owner: '{}', sheet_name: '{}'", owner, sheet_name);
 
-        // NEW: If there's an authenticated user matching the owner, allow access.
+        // If there's an authenticated user matching the owner, allow access.
         if let Some(auth_user) = request.extensions().get::<String>() {
-            // eprintln!("DEBUG: Found authenticated user in extensions: {}", auth_user);
             if *auth_user == owner {
-                // eprintln!("DEBUG: Authenticated user matches owner. Allowing access.");
                 return next.run(request).await;
             }
-        } else {
-            // eprintln!("DEBUG: No authenticated user in extensions.");
         }
 
         if !owner.is_empty() && !sheet_name.is_empty() {
             let list_path = format!("database/{}/list.json", owner);
-            // eprintln!("DEBUG: Checking public status from list at path: {}", list_path);
             if let Ok(data) = std::fs::read_to_string(&list_path) {
-                // eprintln!("DEBUG: Read list.json: {}", data);
                 if let Ok(entries) = serde_json::from_str::<Vec<crate::login::SheetEntry>>(&data) {
-                    // eprintln!("DEBUG: Parsed {} entries", entries.len());
-                    let is_public = entries.iter().any(|entry| {
-                        let condition = entry.name == sheet_name && entry.status == "public";
-                        // eprintln!("DEBUG: Checking entry: {:?} -> {}", entry, condition);
-                        condition
-                    });
-                    // eprintln!("DEBUG: is_public: {}", is_public);
+                    let is_public = entries
+                        .iter()
+                        .any(|entry| entry.name == sheet_name && entry.status == "public");
                     if is_public {
                         return next.run(request).await;
                     }
-                } else {
-                    // eprintln!("DEBUG: Failed to parse list.json");
                 }
-            } else {
-                // eprintln!("DEBUG: Failed to read list.json from path: {}", list_path);
             }
         }
     }
-    // eprintln!("DEBUG: Access denied. Redirecting to /login");
+
     // Failing the above, redirect to login.
     Redirect::to("/login").into_response()
 }
 
+/// List a user's spreadsheet files
+///
+/// Displays a page with all spreadsheets owned by a user.
+///
+/// # Arguments
+/// * `jar` - Cookie jar for authentication
+/// * `username` - Path parameter containing the username
+///
+/// # Returns
+/// * `Result<Html<String>, (StatusCode, &'static str)>` - HTML page or error
 #[cfg(feature = "web")]
 pub async fn list_files(
     jar: CookieJar,
@@ -469,15 +678,16 @@ pub async fn list_files(
     Err((StatusCode::UNAUTHORIZED, "Unauthorized"))
 }
 
-#[cfg(feature = "web")]
-#[derive(Debug, Deserialize)]
-pub struct CreateSheetForm {
-    pub name: String,
-    pub rows: u16,
-    pub cols: u16,
-    pub status: String,
-}
-
+/// Serve the create sheet form
+///
+/// Redirects to the user's list page which contains the create sheet form.
+///
+/// # Arguments
+/// * `jar` - Cookie jar for authentication
+/// * `username` - Path parameter containing the username
+///
+/// # Returns
+/// * `Result<Redirect, (StatusCode, &'static str)>` - Redirect response or error
 #[cfg(feature = "web")]
 pub async fn serve_create_sheet_form(
     jar: CookieJar,
@@ -487,6 +697,17 @@ pub async fn serve_create_sheet_form(
     Ok(Redirect::to(&format!("/{}", username)))
 }
 
+/// Handle creating a new spreadsheet
+///
+/// Creates a new spreadsheet with the specified dimensions and saves it to the user's directory.
+///
+/// # Arguments
+/// * `jar` - Cookie jar for authentication
+/// * `username` - Path parameter containing the username
+/// * `form` - Form data containing the sheet name, dimensions, and visibility
+///
+/// # Returns
+/// * `Redirect` - Redirect back to the user's sheet list
 #[cfg(feature = "web")]
 pub async fn handle_create_sheet(
     jar: CookieJar,
@@ -522,6 +743,16 @@ pub async fn handle_create_sheet(
     Redirect::to(&format!("/{}", username))
 }
 
+/// Handle deleting a spreadsheet
+///
+/// Deletes a user's spreadsheet file and updates the file listing.
+///
+/// # Arguments
+/// * `jar` - Cookie jar for authentication
+/// * `path_params` - Path parameters containing username and sheet name
+///
+/// # Returns
+/// * `Redirect` - Redirect back to the user's sheet list
 #[cfg(feature = "web")]
 pub async fn handle_delete_sheet(
     jar: CookieJar,
@@ -546,51 +777,15 @@ pub async fn handle_delete_sheet(
     Redirect::to(&format!("/{}", username))
 }
 
-// #[cfg(feature = "web")]
-// pub async fn handle_forgot_password(
-//     Form(reset_req): Form<PasswordResetRequest>,
-// ) -> impl IntoResponse {
-//     let mut users = match get_users() {
-//         Ok(users) => users,
-//         Err(_) => {
-//             return (StatusCode::INTERNAL_SERVER_ERROR, "Server error").into_response();
-//         }
-//     };
-
-//     // Find user by email
-//     let user = users.values_mut().find(|u| u.email == reset_req.email);
-
-//     if let Some(user) = user {
-//         let reset_code = generate_reset_code();
-//         let expires = SystemTime::now() + Duration::from_secs(3600); // 1 hour
-
-//         // Update user with reset code
-//         user.reset_code = Some(reset_code.clone());
-//         user.reset_code_expires = Some(expires);
-
-//         // Save updated users
-//         if save_users(&users).is_err() {
-//             return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to save reset code").into_response();
-//         }
-
-//         // Send email
-//         match Mailer::new() {
-//             Ok(mailer) => {
-//                 if let Err(_) = mailer.send_password_reset(&reset_req.email, &reset_code) {
-//                     return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to send email").into_response();
-//                 }
-//             }
-//             Err(_) => {
-//                 return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to initialize mailer").into_response();
-//             }
-//         }
-
-//         (StatusCode::OK, "Password reset email sent").into_response()
-//     } else {
-//         (StatusCode::NOT_FOUND, "Email not found").into_response()
-//     }
-// }
-
+/// Handle password reset requests
+///
+/// Processes a request to reset a forgotten password by sending a reset code via email.
+///
+/// # Arguments
+/// * `reset_req` - Form data containing the email address
+///
+/// # Returns
+/// * `Response` - Redirect to password reset form or error page
 #[cfg(feature = "web")]
 pub async fn handle_forgot_password(
     Form(reset_req): Form<PasswordResetRequest>,
@@ -644,6 +839,15 @@ pub async fn handle_forgot_password(
     }
 }
 
+/// Handle password reset confirmation
+///
+/// Processes a submitted password reset code and updates the user's password if valid.
+///
+/// # Arguments
+/// * `reset_confirm` - Form data containing the email, reset code, and new password
+///
+/// # Returns
+/// * `Response` - Redirect to login page on success or error page on failure
 #[cfg(feature = "web")]
 pub async fn handle_reset_password(
     Form(reset_confirm): Form<PasswordResetConfirm>,
@@ -702,58 +906,16 @@ pub async fn handle_reset_password(
     }
 }
 
-// #[cfg(feature = "web")]
-// pub async fn handle_reset_password(
-//     Form(reset_confirm): Form<PasswordResetConfirm>,
-// ) -> impl IntoResponse {
-//     let mut users = match get_users() {
-//         Ok(users) => users,
-//         Err(_) => {
-//             return (StatusCode::INTERNAL_SERVER_ERROR, "Server error").into_response();
-//         }
-//     };
-
-//     // Find user by email
-//     let user = users.values_mut().find(|u| u.email == reset_confirm.email);
-
-//     if let Some(user) = user {
-//         // Verify reset code
-//         if let Some(stored_code) = &user.reset_code {
-//             if let Some(expires) = user.reset_code_expires {
-//                 if SystemTime::now() > expires {
-//                     return (StatusCode::BAD_REQUEST, "Reset code expired").into_response();
-//                 }
-
-//                 if stored_code != &reset_confirm.reset_code {
-//                     return (StatusCode::BAD_REQUEST, "Invalid reset code").into_response();
-//                 }
-
-//                 // Update password
-//                 match hash_password(&reset_confirm.new_password) {
-//                     Ok(hash) => {
-//                         user.password_hash = hash;
-//                         user.reset_code = None;
-//                         user.reset_code_expires = None;
-
-//                         if save_users(&users).is_err() {
-//                             return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to save new password").into_response();
-//                         }
-
-//                         (StatusCode::OK, "Password reset successful").into_response()
-//                     }
-//                     Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Failed to hash password").into_response(),
-//                 }
-//             } else {
-//                 (StatusCode::BAD_REQUEST, "Reset code expired").into_response()
-//             }
-//         } else {
-//             (StatusCode::BAD_REQUEST, "No reset code found").into_response()
-//         }
-//     } else {
-//         (StatusCode::NOT_FOUND, "Email not found").into_response()
-//     }
-// }
-
+/// Handle password change for authenticated users
+///
+/// Allows authenticated users to change their password by providing their current password.
+///
+/// # Arguments
+/// * `jar` - Cookie jar for authentication
+/// * `change_req` - Form data containing the old and new passwords
+///
+/// # Returns
+/// * `Response` - Success message or error response
 #[cfg(feature = "web")]
 pub async fn handle_change_password(
     jar: CookieJar,
@@ -821,17 +983,48 @@ pub async fn handle_change_password(
     }
 }
 
+/// Serve the password forgot/reset page
+///
+/// # Returns
+/// * `Html<&'static str>` - The password management page HTML
 #[cfg(feature = "web")]
 pub async fn serve_forgot_password_page() -> Html<&'static str> {
     Html(include_str!("./static/password.html"))
 }
 
+/// Serve the password reset page
+///
+/// # Returns
+/// * `Html<&'static str>` - The password management page HTML
 #[cfg(feature = "web")]
 pub async fn serve_reset_password_page() -> Html<&'static str> {
     Html(include_str!("./static/password.html"))
 }
 
+/// Serve the password change page
+///
+/// # Returns
+/// * `Html<&'static str>` - The password management page HTML
 #[cfg(feature = "web")]
 pub async fn serve_change_password_page() -> Html<&'static str> {
     Html(include_str!("./static/password.html"))
+}
+
+/// Form data for spreadsheet creation
+///
+/// Contains parameters for creating a new spreadsheet.
+#[cfg(feature = "web")]
+#[derive(Debug, Deserialize)]
+pub struct CreateSheetForm {
+    /// Name for the new spreadsheet
+    pub name: String,
+
+    /// Number of rows to create
+    pub rows: u16,
+
+    /// Number of columns to create
+    pub cols: u16,
+
+    /// Visibility status ("public" or "private")
+    pub status: String,
 }

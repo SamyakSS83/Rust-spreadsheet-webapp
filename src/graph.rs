@@ -3,25 +3,59 @@ use crate::spreadsheet::Spreadsheet;
 use plotters::prelude::*;
 use std::fs::remove_file;
 
+/// Available graph types supported by the application
+///
+/// This enum defines the different visualization formats that can be generated
+/// from spreadsheet data.
 #[derive(Clone, Debug)]
-
 pub enum GraphType {
+    /// Line graph - Shows trends over time or continuous data with lines
+    /// connecting data points
     Line,
+
+    /// Bar graph - Compares values across different categories with rectangular bars
     Bar,
+
+    /// Scatter plot - Shows the relationship between two variables with points
     Scatter,
-    // Pie,
+
+    /// Area graph - Similar to line graphs but with the area below the line filled in
     Area,
 }
+
+/// Configuration options for graph generation
+///
+/// This structure contains all the customizable properties for generating
+/// different types of graphs.
 #[derive(Clone, Debug)]
 pub struct GraphOptions {
+    /// Title displayed at the top of the graph
     pub title: String,
+
+    /// Label for the X-axis
     pub x_label: String,
+
+    /// Label for the Y-axis
     pub y_label: String,
+
+    /// Width of the graph in pixels
     pub width: u32,
+
+    /// Height of the graph in pixels
     pub height: u32,
+
+    /// Type of graph to generate
     pub graph_type: GraphType,
 }
+
 impl Default for GraphOptions {
+    /// Creates a default configuration for graph generation
+    ///
+    /// # Returns
+    /// * `GraphOptions` - Default configuration with:
+    ///   - Line graph type
+    ///   - 800x600 pixel dimensions
+    ///   - Generic labels
     fn default() -> Self {
         Self {
             title: "Graph".to_string(),
@@ -36,14 +70,39 @@ impl Default for GraphOptions {
 
 /// Creates a graph from spreadsheet data
 ///
+/// This is the main entry point for generating graphs from spreadsheet data.
+/// It parses cell ranges, extracts data, and delegates to the appropriate graph type generator.
+///
 /// # Arguments
-/// * `spreadsheet` - Reference to the spreadsheet
+/// * `spreadsheet` - Reference to the spreadsheet containing the data
 /// * `x_range` - Range for X values (e.g., "A1:A10")
 /// * `y_range` - Range for Y values (e.g., "B1:B10")
 /// * `options` - Graph styling and type options
 ///
 /// # Returns
-/// * A Result containing the PNG image data as bytes
+/// * A Result containing the PNG image data as bytes or an error
+///
+/// # Examples
+/// ```
+/// use cop::spreadsheet::Spreadsheet;
+/// use cop::graph::{GraphOptions, GraphType, create_graph};
+///
+/// let spreadsheet = Spreadsheet::spreadsheet_create(10, 10).unwrap();
+///
+/// let options = GraphOptions {
+///     title: "Sample Graph".to_string(),
+///     x_label: "X Values".to_string(),
+///     y_label: "Y Values".to_string(),
+///     width: 800,
+///     height: 600,
+///     graph_type: GraphType::Line,
+/// };
+///
+/// match create_graph(&spreadsheet, "A1:A5", "B1:B5", options) {
+///     Ok(png_data) => println!("Graph created successfully: {} bytes", png_data.len()),
+///     Err(e) => eprintln!("Failed to create graph: {}", e),
+/// }
+/// ```
 pub fn create_graph(
     spreadsheet: &Spreadsheet,
     x_range: &str,
@@ -70,6 +129,24 @@ pub fn create_graph(
 }
 
 /// Parses the range strings and returns the cell values
+///
+/// This function extracts numerical data from spreadsheet ranges for graphing purposes.
+/// It supports both column ranges (A1:A10) and row ranges (A1:J1).
+///
+/// # Arguments
+/// * `spreadsheet` - Reference to the spreadsheet to extract data from
+/// * `x_range` - Range specification for X values (e.g., "A1:A10")
+/// * `y_range` - Range specification for Y values (e.g., "B1:B10")
+///
+/// # Returns
+/// * A Result containing vectors of extracted X and Y values or an error
+///
+/// # Errors
+/// * Returns an error if the range format is invalid
+/// * Returns an error if the ranges have different lengths
+///
+/// # Notes
+/// * Empty cells in the range will be treated as having a value of 0
 fn parse_ranges(
     spreadsheet: &Spreadsheet,
     x_range: &str,
@@ -171,7 +248,22 @@ fn parse_ranges(
     Ok((x_values, y_values))
 }
 
-// / Creates a line graph
+/// Creates a line graph from data points
+///
+/// Generates a line graph showing the trend between X and Y values with connected lines.
+/// Line graphs are ideal for showing trends over continuous data.
+///
+/// # Arguments
+/// * `data` - Vector of (x,y) data points
+/// * `options` - Graph styling options
+///
+/// # Returns
+/// * A Result containing the PNG image data as bytes or an error
+///
+/// # Implementation Notes
+/// * Creates a temporary file to store the image before reading it back
+/// * Automatically scales axes based on data range
+/// * Uses blue color for the line series
 fn create_line_graph(
     data: Vec<(i32, i32)>,
     options: &GraphOptions,
@@ -223,6 +315,17 @@ fn create_line_graph(
 }
 
 /// Saves a line graph to a file
+///
+/// Creates a line graph and saves it directly to the specified file path.
+/// Useful for generating examples or saving graphs without returning the image data.
+///
+/// # Arguments
+/// * `data` - Vector of (x,y) data points
+/// * `options` - Graph styling options
+/// * `path` - File path where the graph should be saved
+///
+/// # Returns
+/// * A Result indicating success or failure
 fn save_line_graph(
     data: Vec<(i32, i32)>,
     options: &GraphOptions,
@@ -262,7 +365,22 @@ fn save_line_graph(
     Ok(())
 }
 
-/// Creates a bar graph
+/// Creates a bar graph from data points
+///
+/// Generates a bar graph showing values as vertical bars.
+/// Bar graphs are ideal for comparing values across different categories.
+///
+/// # Arguments
+/// * `data` - Vector of (x,y) data points, where x is the category position and y is the value
+/// * `options` - Graph styling options
+///
+/// # Returns
+/// * A Result containing the PNG image data as bytes or an error
+///
+/// # Implementation Notes
+/// * Creates a temporary file to store the image before reading it back
+/// * Uses blue color for bars with solid fill
+/// * Each x-value positions a bar with the height of the corresponding y-value
 fn create_bar_graph(
     data: Vec<(i32, i32)>,
     options: &GraphOptions,
@@ -314,6 +432,20 @@ fn create_bar_graph(
 }
 
 /// Saves a bar graph to a file
+///
+/// Creates a bar graph and saves it directly to the specified file path.
+///
+/// # Arguments
+/// * `data` - Vector of (x,y) data points
+/// * `options` - Graph styling options
+/// * `path` - File path where the graph should be saved
+///
+/// # Returns
+/// * A Result indicating success or failure
+///
+/// # Implementation Notes
+/// * Bars are sized based on the x value - adjacent x values will create adjacent bars
+/// * Bar width is set to 0.8 units (from x-0.4 to x+0.4) for visual clarity
 fn save_bar_graph(
     data: Vec<(i32, i32)>,
     options: &GraphOptions,
@@ -336,12 +468,6 @@ fn save_bar_graph(
         .y_label_area_size(40)
         .build_cartesian_2d(x_range, y_range)?;
 
-    chart
-        .configure_mesh()
-        .x_desc(&options.x_label)
-        .y_desc(&options.y_label)
-        .draw()?;
-
     chart.draw_series(data.iter().map(|&(x, y)| {
         Rectangle::new(
             [((x as f64 - 0.4) as i32, 0), ((x as f64 + 0.4) as i32, y)],
@@ -354,7 +480,22 @@ fn save_bar_graph(
     Ok(())
 }
 
-/// Creates a scatter plot
+/// Creates a scatter plot from data points
+///
+/// Generates a scatter plot showing individual data points without connecting lines.
+/// Scatter plots are ideal for visualizing the relationship between two variables.
+///
+/// # Arguments
+/// * `data` - Vector of (x,y) data points
+/// * `options` - Graph styling options
+///
+/// # Returns
+/// * A Result containing the PNG image data as bytes or an error
+///
+/// # Implementation Notes
+/// * Creates a temporary file to store the image before reading it back
+/// * Uses green circles with 5-pixel radius for data points
+/// * Automatically scales axes based on data range
 fn create_scatter_graph(
     data: Vec<(i32, i32)>,
     options: &GraphOptions,
@@ -406,6 +547,16 @@ fn create_scatter_graph(
 }
 
 /// Saves a scatter plot to a file
+///
+/// Creates a scatter plot and saves it directly to the specified file path.
+///
+/// # Arguments
+/// * `data` - Vector of (x,y) data points
+/// * `options` - Graph styling options
+/// * `path` - File path where the graph should be saved
+///
+/// # Returns
+/// * A Result indicating success or failure
 fn save_scatter_graph(
     data: Vec<(i32, i32)>,
     options: &GraphOptions,
@@ -445,7 +596,23 @@ fn save_scatter_graph(
     Ok(())
 }
 
-/// Creates an area graph
+/// Creates an area graph from data points
+///
+/// Generates an area graph showing values with the area under the line filled in.
+/// Area graphs are good for emphasizing the magnitude of changes over time.
+///
+/// # Arguments
+/// * `data` - Vector of (x,y) data points
+/// * `options` - Graph styling options
+///
+/// # Returns
+/// * A Result containing the PNG image data as bytes or an error
+///
+/// # Implementation Notes
+/// * Creates a temporary file to store the image before reading it back
+/// * Uses semi-transparent blue for the area fill
+/// * Sorts data points by x-value to ensure proper area filling
+/// * Area is filled between the line and y=0
 fn create_area_graph(
     data: Vec<(i32, i32)>,
     options: &GraphOptions,
@@ -506,6 +673,20 @@ fn create_area_graph(
 }
 
 /// Saves an area graph to a file
+///
+/// Creates an area graph and saves it directly to the specified file path.
+///
+/// # Arguments
+/// * `data` - Vector of (x,y) data points
+/// * `options` - Graph styling options
+/// * `path` - File path where the graph should be saved
+///
+/// # Returns
+/// * A Result indicating success or failure
+///
+/// # Implementation Notes
+/// * Sorts data by x-value to ensure proper area filling
+/// * Uses 20% opacity blue fill with blue border
 fn save_area_graph(
     data: Vec<(i32, i32)>,
     options: &GraphOptions,
@@ -555,8 +736,26 @@ fn save_area_graph(
 
 /// Creates example graphs for demonstration purposes
 ///
+/// Generates a set of example graphs (line, bar, scatter, area) using sample data
+/// and saves them to disk in the "graph_output" directory.
+///
 /// # Returns
 /// * A vector of tuples containing graph type name and file path
+///
+/// # Examples
+/// ```
+/// use cop::graph::create_example_graphs;
+///
+/// let examples = create_example_graphs();
+/// for (graph_type, path) in examples {
+///     println!("Created {} graph at {}", graph_type, path);
+/// }
+/// ```
+///
+/// # Implementation Notes
+/// * Creates a directory "graph_output" if it doesn't exist
+/// * Generates a sample dataset with 7 data points
+/// * Creates one graph of each type with standard options
 pub fn create_example_graphs() -> Vec<(String, String)> {
     let mut result = Vec::new();
 

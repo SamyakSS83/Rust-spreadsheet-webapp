@@ -31,4 +31,6 @@ To Do: 20 april
 
 write tests for spreadsheet and cell, fix average: Shivankur and Vanshika
 
-private/public sort karna hai, sheet.html fix karna hai
+Todo: optional
+public editing
+importing a CSV or excel

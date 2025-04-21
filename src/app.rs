@@ -26,67 +26,119 @@ use crate::login::{
 use crate::saving;
 use crate::spreadsheet::{FunctionName, Operand, ParsedRHS, Spreadsheet};
 
+/// Application state shared across all requests
+///
+/// This structure contains the shared state for the web application, including:
+/// - The current spreadsheet in memory
+/// - The original file path for saving/loading operations
+/// - A set of public spreadsheets that can be accessed without authentication
 pub struct AppState {
+    /// The current spreadsheet data, wrapped in a mutex for thread-safe access
     pub sheet: Mutex<Box<Spreadsheet>>,
+
+    /// The original file path of the loaded spreadsheet (if any)
+    /// Used to save the spreadsheet back to its source location
     pub original_path: Mutex<Option<String>>,
+
+    /// A set of publicly accessible spreadsheets, identified by their paths
+    /// Format: "username/sheetname"
     pub public_sheets: Mutex<HashSet<String>>,
 }
 
+/// Data structure for cell updates from the client
 #[derive(Debug, Deserialize)]
 struct CellUpdate {
+    /// The right-hand side formula or value to be parsed
     rhs: String,
+    /// The cell identifier (e.g., "A1", "B2")
     cell: String,
 }
 
+/// Response data structure for cell updates
 #[derive(Serialize)]
 struct CellResponse {
+    /// Status message indicating success or the error that occurred
     status: String,
+    /// The calculated cell value (if successful)
     value: Option<i32>,
 }
 
+/// Query parameters for saving a spreadsheet
 #[derive(Deserialize)]
 struct SaveQuery {
+    /// Filename for the spreadsheet
     filename: String,
 }
 
+/// Query parameters for sheet creation/initialization
 #[derive(Deserialize)]
 struct SheetQuery {
+    /// Number of rows to create (optional)
     rows: Option<i32>,
+    /// Number of columns to create (optional)
     cols: Option<i32>,
 }
 
+/// Response structure for save operations
 #[derive(Serialize)]
 struct SaveResponse {
+    /// Status of the operation ("ok" or "error")
     status: String,
+    /// Optional message with additional details, especially for errors
     message: Option<String>,
 }
 
+/// Query parameters for operations that require a filename
 #[derive(Debug, Deserialize)]
 struct FileNameQuery {
+    /// Name of the file
     name: String,
 }
 
+/// Request data for graph generation
 #[derive(Debug, Deserialize)]
 struct GraphRequest {
+    /// Cell range for X-axis values (e.g., "A1:A10")
     x_range: String,
+    /// Cell range for Y-axis values (e.g., "B1:B10")
     y_range: String,
+    /// Title for the graph
     title: String,
+    /// Label for the X-axis
     x_label: String,
+    /// Label for the Y-axis
     y_label: String,
+    /// Type of graph ("Line", "Bar", "Scatter", "Area")
     graph_type: String,
 }
 
+/// Data structure for listing spreadsheets
 #[derive(Debug, Serialize, Deserialize)]
 struct SheetEntry {
+    /// Name of the spreadsheet
     name: String,
-    status: String, // "public" or "private"
-}
-
-#[derive(Debug, Deserialize)]
-struct ChangeStatusForm {
+    /// Visibility status ("public" or "private")
     status: String,
 }
 
+/// Form data for changing spreadsheet visibility status
+#[derive(Debug, Deserialize)]
+struct ChangeStatusForm {
+    /// New status value ("public" or "private")
+    status: String,
+}
+
+/// Main application entry point
+///
+/// Initializes the database, creates the default spreadsheet, and starts the web server.
+/// Sets up both public and authenticated routes for the application.
+///
+/// # Arguments
+/// * `rows` - Number of rows for the initial spreadsheet
+/// * `cols` - Number of columns for the initial spreadsheet
+///
+/// # Returns
+/// * `Result<(), Box<dyn std::error::Error>>` - Success or error
 pub async fn run(rows: i16, cols: i16) -> Result<(), Box<dyn std::error::Error>> {
     // Initialize the database
     login::init_database()?;
@@ -176,6 +228,16 @@ pub async fn run(rows: i16, cols: i16) -> Result<(), Box<dyn std::error::Error>>
     Ok(())
 }
 
+/// Generate a graph based on spreadsheet data
+///
+/// Creates and returns a graph image (PNG format) based on data ranges from the spreadsheet.
+///
+/// # Arguments
+/// * `state` - Application state containing the spreadsheet
+/// * `payload` - Graph configuration including ranges, labels, and graph type
+///
+/// # Returns
+/// * A PNG image of the requested graph, or an error message
 async fn generate_graph(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<GraphRequest>,
@@ -209,11 +271,28 @@ async fn generate_graph(
     }
 }
 
+/// Serve the landing page
+///
+/// Redirects to the login page.
+///
+/// # Returns
+/// * Redirect response to the login page
 async fn serve_landing() -> impl IntoResponse {
     // Redirect to login page
     Redirect::to("/login")
 }
 
+/// Serve the spreadsheet application page
+///
+/// Optionally creates a new spreadsheet with the specified dimensions.
+/// Returns the HTML for the spreadsheet application.
+///
+/// # Arguments
+/// * `params` - Optional query parameters specifying sheet dimensions
+/// * `state` - Application state
+///
+/// # Returns
+/// * HTML content for the spreadsheet UI
 async fn serve_sheet(
     Query(params): Query<SheetQuery>,
     State(state): State<Arc<AppState>>,
@@ -231,6 +310,15 @@ async fn serve_sheet(
     Html(include_str!("./static/sheet.html"))
 }
 
+/// Get spreadsheet data in JSON format
+///
+/// Returns the current spreadsheet data including all cells with values.
+///
+/// # Arguments
+/// * `state` - Application state containing the spreadsheet
+///
+/// # Returns
+/// * JSON representation of the spreadsheet data
 async fn get_sheet_data(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let sheet = state.sheet.lock().unwrap();
     let rows = sheet.rows;
@@ -261,6 +349,16 @@ async fn get_sheet_data(State(state): State<Arc<AppState>>) -> impl IntoResponse
     }))
 }
 
+/// Get data for a specific cell
+///
+/// Returns the value, formula and error status of a specific cell.
+///
+/// # Arguments
+/// * `cell_name` - Cell identifier (e.g., "A1", "B2")
+/// * `state` - Application state containing the spreadsheet
+///
+/// # Returns
+/// * JSON data for the requested cell or 404 if not found
 async fn get_cell(
     Path(cell_name): Path<String>,
     State(state): State<Arc<AppState>>,
@@ -283,6 +381,16 @@ async fn get_cell(
     StatusCode::NOT_FOUND.into_response()
 }
 
+/// Update a cell's value in the spreadsheet
+///
+/// Parses the input formula/value and updates the specified cell.
+///
+/// # Arguments
+/// * `state` - Application state containing the spreadsheet
+/// * `payload` - Cell update data including the cell name and formula/value
+///
+/// # Returns
+/// * JSON response with update status and the new cell value
 async fn update_cell(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<CellUpdate>,
@@ -344,6 +452,16 @@ async fn update_cell(
     }
 }
 
+/// Save the current spreadsheet
+///
+/// Saves the spreadsheet to the provided filename or to the original path.
+///
+/// # Arguments
+/// * `params` - Query parameters containing the filename
+/// * `state` - Application state containing the spreadsheet
+///
+/// # Returns
+/// * JSON response indicating success or failure
 async fn save_spreadsheet(
     Query(params): Query<SaveQuery>,
     State(state): State<Arc<AppState>>,
@@ -395,7 +513,18 @@ async fn save_spreadsheet(
     }
 }
 
-// Modified save function to save to user directory
+/// Save spreadsheet to a user's directory with a specific name
+///
+/// Saves the current spreadsheet to the authenticated user's directory
+/// with the specified name.
+///
+/// # Arguments
+/// * `state` - Application state containing the spreadsheet
+/// * `username` - The authenticated username
+/// * `query` - Form data containing the filename
+///
+/// # Returns
+/// * JSON response indicating success or failure
 async fn save_spreadsheet_with_name(
     State(state): State<Arc<AppState>>,
     username: axum::extract::Extension<String>,
@@ -442,7 +571,18 @@ async fn save_spreadsheet_with_name(
     }
 }
 
-// Load user file by path
+/// Load a user's spreadsheet file
+///
+/// Loads a spreadsheet file from a user's directory and serves the spreadsheet UI.
+/// Checks for public/private access permissions.
+///
+/// # Arguments
+/// * `username` and `filename` - Path parameters identifying the file
+/// * `jar` - Cookie jar containing session information
+/// * `state` - Application state
+///
+/// # Returns
+/// * Spreadsheet UI if authorized, or redirects to login
 async fn load_user_file(
     axum::extract::Path((username, filename)): axum::extract::Path<(String, String)>,
     jar: CookieJar, // New parameter
@@ -518,6 +658,17 @@ async fn load_user_file(
     }
 }
 
+/// Change the visibility status of a spreadsheet
+///
+/// Updates a spreadsheet's status to either "public" or "private".
+///
+/// # Arguments
+/// * `username` and `filename` - Path parameters identifying the file
+/// * `current_user` - The authenticated username
+/// * `form` - Form data containing the new status
+///
+/// # Returns
+/// * Redirect back to user's sheet list or error response
 async fn change_sheet_status(
     axum::extract::Path((username, filename)): axum::extract::Path<(String, String)>,
     current_user: axum::extract::Extension<String>,
@@ -586,6 +737,15 @@ async fn change_sheet_status(
     Redirect::to(&format!("/{}", username)).into_response()
 }
 
+/// Export the current spreadsheet as a binary file
+///
+/// Serializes the spreadsheet and returns it as a downloadable binary file.
+///
+/// # Arguments
+/// * `state` - Application state containing the spreadsheet
+///
+/// # Returns
+/// * Binary file for download or error response
 async fn export_spreadsheet(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let sheet = state.sheet.lock().unwrap();
 
@@ -619,6 +779,16 @@ async fn export_spreadsheet(State(state): State<Arc<AppState>>) -> impl IntoResp
     }
 }
 
+/// Load a spreadsheet from an uploaded file
+///
+/// Processes a multipart form upload and loads the spreadsheet into memory.
+///
+/// # Arguments
+/// * `state` - Application state
+/// * `multipart` - Multipart form data containing the uploaded file
+///
+/// # Returns
+/// * JSON response indicating success or failure
 async fn load_spreadsheet(
     State(state): State<Arc<AppState>>,
     mut multipart: Multipart,
@@ -675,6 +845,15 @@ async fn load_spreadsheet(
     }
 }
 
+/// Download the current spreadsheet as CSV
+///
+/// Converts the spreadsheet to CSV format and returns it as a downloadable file.
+///
+/// # Arguments
+/// * `state` - Application state containing the spreadsheet
+///
+/// # Returns
+/// * CSV file for download or error response
 async fn download_csv(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let sheet = state.sheet.lock().unwrap();
 
@@ -699,6 +878,15 @@ async fn download_csv(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     }
 }
 
+/// Download the current spreadsheet as XLSX
+///
+/// Converts the spreadsheet to XLSX format and returns it as a downloadable file.
+///
+/// # Arguments
+/// * `state` - Application state containing the spreadsheet
+///
+/// # Returns
+/// * XLSX file for download or error response
 async fn download_xlsx(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let sheet = state.sheet.lock().unwrap();
 
@@ -726,7 +914,16 @@ async fn download_xlsx(State(state): State<Arc<AppState>>) -> impl IntoResponse 
     }
 }
 
-// Helper function to serialize a spreadsheet to a memory buffer
+/// Serialize a spreadsheet to a memory buffer
+///
+/// Compresses and serializes a spreadsheet to a memory buffer.
+///
+/// # Arguments
+/// * `spreadsheet` - The spreadsheet to serialize
+/// * `buffer` - The buffer to write to
+///
+/// # Returns
+/// * `std::io::Result<()>` - Success or error
 fn serialize_to_memory(spreadsheet: &Spreadsheet, buffer: &mut Vec<u8>) -> std::io::Result<()> {
     use bincode::serialize_into;
     use flate2::Compression;
@@ -741,7 +938,15 @@ fn serialize_to_memory(spreadsheet: &Spreadsheet, buffer: &mut Vec<u8>) -> std::
     Ok(())
 }
 
-// Helper function to deserialize a spreadsheet from a memory buffer
+/// Deserialize a spreadsheet from a memory buffer
+///
+/// Decompresses and deserializes a spreadsheet from a memory buffer.
+///
+/// # Arguments
+/// * `buffer` - The buffer containing the serialized spreadsheet
+///
+/// # Returns
+/// * `std::io::Result<Box<Spreadsheet>>` - Deserialized spreadsheet or error
 fn deserialize_from_memory(buffer: &[u8]) -> std::io::Result<Box<Spreadsheet>> {
     use bincode::deserialize_from;
     use flate2::read::GzDecoder;
@@ -757,7 +962,16 @@ fn deserialize_from_memory(buffer: &[u8]) -> std::io::Result<Box<Spreadsheet>> {
     Ok(Box::new(spreadsheet))
 }
 
-// Add this function to convert ParsedRHS to a display string
+/// Convert a formula to a displayable string
+///
+/// Converts the internal formula representation to a string that can be displayed
+/// in the UI or saved to a file.
+///
+/// # Arguments
+/// * `formula` - The formula to convert
+///
+/// # Returns
+/// * A string representation of the formula
 fn formula_to_string(formula: &ParsedRHS) -> String {
     match formula {
         ParsedRHS::Function {
@@ -815,6 +1029,16 @@ fn formula_to_string(formula: &ParsedRHS) -> String {
     }
 }
 
+/// Get information about the current spreadsheet
+///
+/// Returns metadata about the current spreadsheet, including whether it has been loaded
+/// from a file and the original path if applicable.
+///
+/// # Arguments
+/// * `state` - Application state
+///
+/// # Returns
+/// * JSON response with spreadsheet information
 async fn get_sheet_info(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let original_path = state.original_path.lock().unwrap();
 
