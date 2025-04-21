@@ -1,16 +1,15 @@
-#![cfg(not(tarpaulin_include))]
-use cop::cell::{Cell, cell_contains, cell_create, cell_dep_insert, cell_dep_remove};
-use cop::spreadsheet::{FunctionName, Operand, ParsedRHS, Spreadsheet};
-use std::collections::BTreeSet;
-use std::time::Instant;
 
 #[cfg(test)]
 
 mod spreadsheet_tests {
-    use cop::cell;
-    use serde_json::Number;
+    use cop::cell::{ cell_dep_insert};
+    use cop::spreadsheet::{FunctionName, Operand, ParsedRHS, Spreadsheet};
+    // use std::collections::BTreeSet;
+    use std::time::Instant;
+    // use cop::cell;
+    // use serde_json::Number;
 
-    use super::*;
+    // use super::*;
 
     #[test]
     fn test_spreadsheet_creation() {

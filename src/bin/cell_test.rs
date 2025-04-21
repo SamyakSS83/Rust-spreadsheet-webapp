@@ -1,9 +1,8 @@
 #![cfg(not(tarpaulin_include))]
-use cop::cell::{Cell, Dependents, cell_create, cell_dep_insert, cell_dep_remove};
 
 #[cfg(test)]
 mod cell_tests {
-    use super::*;
+    use cop::cell::{Cell, Dependents, cell_create, cell_dep_insert, cell_dep_remove};
 
     fn cell_contains(cell: &Cell, row: i16, col: i16) -> bool {
         cell.contains(row, col)
