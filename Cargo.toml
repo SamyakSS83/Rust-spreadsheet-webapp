@@ -77,3 +77,7 @@ path = "src/bin/graph_test.rs"
 [lib]
 name = "cop"
 path = "src/lib.rs"
+
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(tarpaulin_include)'] }
+

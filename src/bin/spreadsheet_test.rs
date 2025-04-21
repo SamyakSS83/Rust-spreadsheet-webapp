@@ -1,15 +1,11 @@
 // #[cfg(test)]
 #![cfg(not(tarpaulin_include))]
-
+#[cfg(test)]
 mod spreadsheet_tests {
-    use cop::cell::{cell_dep_insert,cell_contains};
+    use cop::cell::{cell_contains, cell_dep_insert};
     use cop::spreadsheet::{FunctionName, Operand, ParsedRHS, Spreadsheet};
     // use std::collections::BTreeSet;
     use std::time::Instant;
-    // use cop::cell;
-    // use serde_json::Number;
-
-    // use super::*;
 
     #[test]
     fn test_spreadsheet_creation() {
@@ -1267,26 +1263,20 @@ mod spreadsheet_tests {
             }
         );
 
-        let (valid, _,  _, _) = sheet.is_valid_command("J10", "COPY(A1:B2)");
+        let (valid, _, _, _) = sheet.is_valid_command("J10", "COPY(A1:B2)");
         assert!(!valid);
 
         let (valid, row, col, expr) = sheet.is_valid_command("A1", "SLEEP(2)");
         assert!(valid);
         assert_eq!(row, 1);
         assert_eq!(col, 1);
-        assert_eq!(
-            expr,
-            ParsedRHS::Sleep (Operand::Number(2))
-        );
+        assert_eq!(expr, ParsedRHS::Sleep(Operand::Number(2)));
 
         let (valid, row, col, expr) = sheet.is_valid_command("A1", "SLEEP(B2)");
         assert!(valid);
         assert_eq!(row, 1);
         assert_eq!(col, 1);
-        assert_eq!(
-            expr,
-            ParsedRHS::Sleep (Operand::Cell(2,2))
-        );
+        assert_eq!(expr, ParsedRHS::Sleep(Operand::Cell(2, 2)));
 
         let (valid, row, col, expr) = sheet.is_valid_command("A1", "");
         assert!(!valid);
@@ -1593,9 +1583,8 @@ mod spreadsheet_tests {
         let (valid, _, _, _) = sheet.is_valid_command("A1", "A1+B");
         assert!(!valid); // invalid number
 
-        let (valid,_,_,_) = sheet.is_valid_command("A1", "A1%B1");
+        let (valid, _, _, _) = sheet.is_valid_command("A1", "A1%B1");
         assert!(!valid);
-
     }
 
     #[test]

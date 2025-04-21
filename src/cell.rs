@@ -76,7 +76,6 @@ impl Cell {
     }
 
     pub fn contains(&self, row: i16, col: i16) -> bool {
-
         let key = (row, col);
         match &self.dependents {
             Dependents::Vector(vec) => vec.iter().any(|k| k == &key),

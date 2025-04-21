@@ -1,6 +1,5 @@
 #![cfg(not(tarpaulin_include))]
 use cop::spreadsheet::Spreadsheet;
-use std::io::{self, Write};
 
 fn execute_command(sheet: &mut Box<Spreadsheet>, cmd: &str, status: &mut String) {
     if cmd.len() == 1 && "wasd".contains(cmd) {

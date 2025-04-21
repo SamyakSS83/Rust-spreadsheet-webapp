@@ -53,7 +53,7 @@ pub fn to_xlsx(sheet: &Spreadsheet) -> Result<Vec<u8>, Box<dyn Error>> {
         for c in 1..=sheet.cols {
             let index = ((r - 1) * sheet.cols + (c - 1)) as usize;
             if let Some(cell) = &sheet.cells[index] {
-                worksheet.write_number((r - 1) as u32, (c - 1) as u16, cell.value as i32)?;
+                worksheet.write_number((r - 1) as u32, (c - 1) as u16, cell.value)?;
             }
         }
     }
