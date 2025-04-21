@@ -163,9 +163,6 @@ pub struct Session {
     pub expires_at: SystemTime,
 }
 
-/// Global sessions storage
-///
-/// Stores all active user sessions in a thread-safe map.
 lazy_static! {
     static ref SESSIONS: RwLock<HashMap<String, Session>> = RwLock::new(HashMap::new());
 }

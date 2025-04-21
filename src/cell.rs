@@ -181,7 +181,7 @@ impl Cell {
 /// Creates a new cell at the specified row and column.
 ///
 /// This function provides a C-compatible interface for creating cells,
-/// returning a Box<Cell> instead of a plain Cell to match external API expectations.
+/// returning a `Box<Cell>` instead of a plain Cell to match external API expectations.
 ///
 /// # Arguments
 /// * `row` - The row index (1-based)

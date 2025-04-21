@@ -273,6 +273,5 @@ pub use cell::*;
 pub use downloader::*;
 pub use graph::*;
 pub use login::*;
-pub use mailer::*;
 pub use saving::*;
 pub use spreadsheet::*;

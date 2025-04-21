@@ -47,7 +47,7 @@ impl Mailer {
         let mut lines = creds_data.lines();
         let email = lines.next().unwrap_or("").trim().to_string();
         let password = lines.next().unwrap_or("").trim().to_string();
-        
+
         if email.is_empty() || password.is_empty() {
             return Err("Invalid mail credentials in config file".into());
         }
@@ -110,7 +110,7 @@ impl Mailer {
 /// # Example
 /// ```
 /// use cop::mailer::generate_reset_code;
-/// 
+///
 /// let reset_code = generate_reset_code();
 /// assert_eq!(reset_code.len(), 8);
 /// ```
