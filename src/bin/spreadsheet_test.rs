@@ -1579,7 +1579,6 @@ mod spreadsheet_tests {
 
         let (valid, _) = sheet.is_valid_arithmetic_expression("-4+++5");
         assert!(!valid); // Invalid format
-
     }
 
     #[test]
@@ -1874,6 +1873,119 @@ mod spreadsheet_tests {
         // Verify window state
         assert_eq!(sheet.view_row, 15);
         assert_eq!(sheet.view_col, 15);
+    }
+    #[test]
+    fn test_undo_function_new() {
+        let mut sheet = Spreadsheet::spreadsheet_create(10, 10).unwrap();
+        let mut status = String::new();
+
+        // Test setting a simple value
+        let val_expr = ParsedRHS::SingleValue(Operand::Number(42));
+        sheet.spreadsheet_set_cell_value(1, 1, val_expr, &mut status);
+        assert_eq!(status, "ok");
+
+        // Check initial state
+        let a1_idx = 0;
+        assert_eq!(sheet.cells[a1_idx].as_ref().unwrap().value, 42);
+
+        // Test undo
+        sheet.spreadsheet_undo(&mut status);
+        assert_eq!(sheet.cells[a1_idx].as_ref().unwrap().value, 0); // Cell should be reset to 0
+
+        // Second call to undo will redo the operation (revert to 42)
+        sheet.spreadsheet_undo(&mut status);
+        assert_eq!(sheet.cells[a1_idx].as_ref().unwrap().value, 42); // Cell should be reset to 42
+
+        // Set A1 to 100
+        let val_expr = ParsedRHS::SingleValue(Operand::Number(100));
+        sheet.spreadsheet_set_cell_value(1, 1, val_expr, &mut status);
+        assert_eq!(sheet.cells[a1_idx].as_ref().unwrap().value, 100); // Cell should be set to 100
+
+        // Set A2 to 200
+        let a2_idx = 10; // row 2, col 1 (0-indexed)
+        let val_expr = ParsedRHS::SingleValue(Operand::Number(200));
+        sheet.spreadsheet_set_cell_value(2, 1, val_expr, &mut status);
+        assert_eq!(sheet.cells[a2_idx].as_ref().unwrap().value, 200); // Cell should be set to 200
+
+        // Set C1 to AVG(A1:A2)
+        let c1_idx = 2; // row 1, col 3 (0-indexed)
+        let avg_expr = ParsedRHS::Function {
+            name: FunctionName::Avg,
+            args: (
+                Operand::Cell(1, 1), // A1
+                Operand::Cell(2, 1), // A2
+            ),
+        };
+        sheet.undo_stack.clear();
+        sheet.spreadsheet_set_cell_value(1, 3, avg_expr, &mut status);
+        // eprintln!("value forÇ is {:?}", sheet.cells[c1_idx]);
+        assert_eq!(sheet.cells[c1_idx].as_ref().unwrap().value, 150); // Cell should be set to 150
+
+        // Undo the AVG function in C1
+        sheet.spreadsheet_undo(&mut status);
+        assert_eq!(sheet.cells[c1_idx].as_ref().unwrap().value, 0); // Cell should be reset to 0
+
+        // Test undo with arithmetic operations
+        // Set A3 to A1 + 50
+        let a3_idx = 20; // row 3, col 1 (0-indexed)
+        let arith_expr = ParsedRHS::Arithmetic {
+            lhs: Operand::Cell(1, 1),
+            operator: '+',
+            rhs: Operand::Number(50),
+        };
+        sheet.spreadsheet_set_cell_value(3, 1, arith_expr, &mut status);
+        assert_eq!(status, "ok");
+        eprintln!("value of a3 is {:?}", sheet.cells[a3_idx]);
+        assert_eq!(sheet.cells[a3_idx].as_ref().unwrap().value, 150); // 100 + 50
+
+        // Test undo with range functions
+        // Set A4 to SUM(A1:A3)
+        let a4_idx = 30; // row 4, col 1 (0-indexed)
+        let sum_expr = ParsedRHS::Function {
+            name: FunctionName::Sum,
+            args: (
+                Operand::Cell(1, 1), // A1
+                Operand::Cell(3, 1), // A3
+            ),
+        };
+        sheet.spreadsheet_set_cell_value(4, 1, sum_expr, &mut status);
+        assert_eq!(status, "ok");
+        assert_eq!(sheet.cells[a4_idx].as_ref().unwrap().value, 450); // 100 + 200 + 150
+
+        // Test undo of A4 SUM function
+        sheet.spreadsheet_undo(&mut status);
+        assert_eq!(sheet.cells[a4_idx].as_ref().unwrap().value, 0); // Reset A4 to 0
+
+        // Redo the SUM function in A4
+        sheet.spreadsheet_undo(&mut status);
+        // The correct expected value is 450 because our implementation of undo is actually toggling
+        // between the two most recent states
+        assert_eq!(sheet.cells[a4_idx].as_ref().unwrap().value, 450); // A4 should be back to 450
+
+        // Test undo with SLEEP function
+        let a5_idx = 40; // row 5, col 1 (0-indexed)
+        let sleep_expr = ParsedRHS::Sleep(Operand::Number(1));
+        sheet.spreadsheet_set_cell_value(5, 1, sleep_expr, &mut status);
+        assert_eq!(status, "ok");
+        assert_eq!(sheet.cells[a5_idx].as_ref().unwrap().value, 1);
+
+        sheet.spreadsheet_undo(&mut status);
+        assert_eq!(sheet.cells[a5_idx].as_ref().unwrap().value, 0);
+
+        // Test undo after setting a cell to an error state
+        let a6_idx = 50; // row 6, col 1 (0-indexed)
+        let div_zero_expr = ParsedRHS::Arithmetic {
+            lhs: Operand::Number(10),
+            operator: '/',
+            rhs: Operand::Number(0),
+        };
+        sheet.spreadsheet_set_cell_value(6, 1, div_zero_expr, &mut status);
+        assert_eq!(status, "ok");
+        assert!(sheet.cells[a6_idx].as_ref().unwrap().error);
+
+        sheet.spreadsheet_undo(&mut status);
+        assert!(!sheet.cells[a6_idx].as_ref().unwrap().error);
+        assert_eq!(sheet.cells[a6_idx].as_ref().unwrap().value, 0);
     }
 }
 
