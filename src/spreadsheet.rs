@@ -441,16 +441,14 @@ impl Spreadsheet {
             ParsedRHS::SingleValue(Operand::Cell(dep_r, dep_c)) => {
                 let dep_index = (dep_r - 1) as usize * self.cols as usize + (dep_c - 1) as usize;
 
-                if let Some(dep_cell) = self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut()) {
-                    crate::cell::cell_dep_remove(dep_cell, r, c);
-                }
+                let dep_cell = self.cells[dep_index].as_mut().unwrap();
+                crate::cell::cell_dep_remove(dep_cell, r, c);
             }
             ParsedRHS::Sleep(Operand::Cell(dep_r, dep_c)) => {
                 let dep_index = (dep_r - 1) as usize * self.cols as usize + (dep_c - 1) as usize;
 
-                if let Some(dep_cell) = self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut()) {
-                    crate::cell::cell_dep_remove(dep_cell, r, c);
-                }
+                let dep_cell = self.cells[dep_index].as_mut().unwrap();
+                crate::cell::cell_dep_remove(dep_cell, r, c);
             }
             _ => {}
         }
@@ -469,20 +467,16 @@ impl Spreadsheet {
             for r_it in start_row..=end_row {
                 for c_it in start_col..=end_col {
                     let dep_index = (r_it - 1) as usize * self.cols as usize + (c_it - 1) as usize;
-                    if let Some(dep_cell) =
-                        self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
-                    {
-                        crate::cell::cell_dep_insert(dep_cell, r, c);
-                    }
+                    let dep_cell = self.cells[dep_index].as_mut().unwrap();
+                crate::cell::cell_dep_remove(dep_cell, r, c);
                 }
             }
         } else {
             if start_row > 0 {
                 let dep_index =
                     (start_row - 1) as usize * self.cols as usize + (start_col - 1) as usize;
-                if let Some(dep_cell) = self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut()) {
-                    crate::cell::cell_dep_insert(dep_cell, r, c);
-                }
+                    let dep_cell = self.cells[dep_index].as_mut().unwrap();
+                    crate::cell::cell_dep_remove(dep_cell, r, c);
             }
             if end_row > 0 {
                 let dep_index =
@@ -645,7 +639,6 @@ impl Spreadsheet {
 
         for (row, col) in sorted_cells.iter() {
             let sorted_index = (*row - 1) as usize * self.cols as usize + (*col - 1) as usize;
-
 
             let formula = &self.cells[sorted_index].as_ref().unwrap().formula;
 
