@@ -1,0 +1,21 @@
+// src/main.rs
+use actix_web::{web, App, HttpServer};
+use actix_files as fs;
+use crate::app::AppState;
+use crate::routes;
+use crate::app::generate_graph;
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    let app_state = AppState::new();
+
+    HttpServer::new(move || {
+        App::new()
+            .app_data(web::Data::new(app_state.clone()))
+            .configure(routes::init_routes)
+            .service(fs::Files::new("/static", "./static").show_files_listing())
+    })
+    .bind("127.0.0.1:8080")?
+    .run()
+    .await
+}

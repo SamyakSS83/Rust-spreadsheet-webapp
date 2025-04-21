@@ -1,0 +1,20 @@
+// filepath: /actix-spreadsheet/actix-spreadsheet/src/main.rs
+use actix_web::{web, App, HttpServer};
+use actix_files as fs;
+use std::sync::Arc;
+use crate::app::AppState;
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    let app_state = Arc::new(AppState::new());
+
+    HttpServer::new(move || {
+        App::new()
+            .app_data(web::Data::from(app_state.clone()))
+            .configure(routes::init_routes)
+            .service(fs::Files::new("/static", "./static").show_files_listing())
+    })
+    .bind("127.0.0.1:8080")?
+    .run()
+    .await
+}
