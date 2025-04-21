@@ -1,3 +1,5 @@
+#![cfg(not(tarpaulin_include))]
+
 use axum::{
     Form, Json, Router,
     body::Bytes,

@@ -25,8 +25,7 @@ pub struct Spreadsheet {
     // pub cells: Vec<Vec<Option<Cell>>>,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize, Clone)]
-#[derive(PartialEq)]
+#[derive(Debug, serde::Deserialize, serde::Serialize, Clone, PartialEq)]
 pub enum ParsedRHS {
     Function {
         name: FunctionName,
@@ -42,15 +41,13 @@ pub enum ParsedRHS {
     None,
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
-#[derive(PartialEq)]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Debug, PartialEq)]
 pub enum Operand {
     Number(i32),
     Cell(i16, i16), // (row, col)
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
-#[derive(PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 pub enum FunctionName {
     Min,
     Max,
@@ -161,82 +158,6 @@ impl Spreadsheet {
 
     pub fn is_numeric(s: &str) -> bool {
         !s.is_empty() && s.chars().all(|c| c.is_ascii_digit())
-    }
-
-    pub fn find_depends(&self, formula: &str) -> Result<(i16, i16, i16, i16, bool), &'static str> {
-        let mut range_bool = false;
-        let ranges = ["MIN", "MAX", "AVG", "SUM", "STDEV"];
-
-        // Check if formula starts with a range function
-        for range in &ranges {
-            if formula.starts_with(range) {
-                range_bool = true;
-
-                // Find opening bracket
-                if let Some(bracket_pos) = formula.find('(') {
-                    let new_formula = &formula[bracket_pos + 1..];
-
-                    // Extract range without closing bracket
-                    if let Some(closing_bracket_pos) = new_formula.find(')') {
-                        let only_range = &new_formula[..closing_bracket_pos];
-
-                        // Parse the range in the format "A1:B2"
-                        if let Some(colon_pos) = only_range.find(':') {
-                            let start_cell = &only_range[..colon_pos];
-                            let end_cell = &only_range[colon_pos + 1..];
-
-                            // Parse start and end cells
-                            if let Some((row1, col1)) = self.spreadsheet_parse_cell_name(start_cell)
-                            {
-                                if let Some((row2, col2)) =
-                                    self.spreadsheet_parse_cell_name(end_cell)
-                                {
-                                    // Check if range is valid
-                                    if col2 < col1 || (col1 == col2 && row2 < row1) {
-                                        return Err("Invalid formula format");
-                                    }
-
-                                    // Convert to 0-based index (like in C version)
-                                    let row1 = row1 - 1;
-                                    let row2 = row2 - 1;
-
-                                    return Ok((row1, row2, col1, col2, range_bool));
-                                }
-                            }
-                        }
-                    }
-                }
-
-                return Err("Invalid range format");
-            }
-        }
-
-        // Not a range function, look for cell references
-        let mut r1 = 0;
-        let mut r2 = 0;
-        let mut c1 = 0;
-        let mut c2 = 0;
-
-        // Use regex to find cell references like A1, B2, etc.
-        let re = regex::Regex::new(r"([A-Za-z]+[0-9]+)").unwrap();
-
-        for (count, cap) in re.captures_iter(formula).enumerate() {
-            let ref_str = &cap[1];
-
-            if count == 0 {
-                if let Some((row, col)) = self.spreadsheet_parse_cell_name(ref_str) {
-                    r1 = row;
-                    c1 = col;
-                }
-            } else if count == 1 {
-                if let Some((row, col)) = self.spreadsheet_parse_cell_name(ref_str) {
-                    r2 = row;
-                    c2 = col;
-                }
-            }
-        }
-
-        Ok((r1, r2, c1, c2, range_bool))
     }
 
     pub fn spreadsheet_evaluate_expression(
@@ -496,15 +417,6 @@ impl Spreadsheet {
         false
     }
 
-    // Count the number of dependent cells
-    pub fn count_dependent_cells(&self, cell: &Cell) -> usize {
-        match &cell.dependents {
-            crate::cell::Dependents::Vector(vec) => vec.len(),
-            crate::cell::Dependents::Set(set) => set.len(),
-            crate::cell::Dependents::None => 0,
-        }
-    }
-
     // Helper method for the rec_find_cycle_using_stack function - simplifies dependent collection
     pub fn get_dependent_names(&self, cell: &Cell) -> Vec<(i16, i16)> {
         match &cell.dependents {
@@ -517,7 +429,7 @@ impl Spreadsheet {
     // Entry point for cycle detection - checks if a given cell could create a cycle
     pub fn first_step_find_cycle(
         &self,
-        (r_,c_): (i16, i16),
+        (r_, c_): (i16, i16),
         (r1, c1): (i16, i16),
         (r2, c2): (i16, i16),
         range_bool: bool,
@@ -630,15 +542,15 @@ impl Spreadsheet {
                     crate::cell::cell_dep_remove(dep_cell, r, c);
                 }
             }
-            _=> {}
+            _ => {}
         }
     }
 
     pub fn update_dependencies(
         &mut self,
         (r, c): (i16, i16),
-        (start_row,start_col): (i16, i16),
-        (end_row,end_col): (i16, i16),
+        (start_row, start_col): (i16, i16),
+        (end_row, end_col): (i16, i16),
         is_range: bool,
     ) -> i32 {
         // eprintln!("Entered update_dependencies for cell: {cell_name} with formula: {formula}");
@@ -785,13 +697,15 @@ impl Spreadsheet {
         } = rhs
         {
             // Calculate offsets
-            let dest_row = row;
-            let dest_col = col;
-            let row_offset = dest_row as isize - start_row as isize;
-            let col_offset = dest_col as isize - start_col as isize;
+            let dest_row = row; //1
+            let dest_col = col; //1
+            let row_offset = dest_row as isize - start_row as isize; //1
+            let col_offset = dest_col as isize - start_col as isize; //0
             // firstly iterate through all src_cells nd put them in some vector
             // then iterate through all dest cells nd put value from vectors in dest cells
             // can't be done in single iteration ; src and dest cells can be overlapping
+            // println!("{} {}", start_row, start_col);
+            // println!("{} {}", end_row, end_col);
             let mut src_val: Vec<i32> = Vec::new();
             let mut src_err: Vec<bool> = Vec::new();
             for r in start_row..=end_row {
@@ -803,6 +717,7 @@ impl Spreadsheet {
                     }
                 }
             }
+            // println!("src_val {:?}", src_val);
             // now iterate through all dest cells and put value from src_val in dest cells
             let mut cnter = 0;
             for r in start_row..=end_row {
@@ -820,6 +735,7 @@ impl Spreadsheet {
                                 dest_cell.row,
                                 dest_cell.col,
                             ));
+                            // println!("dest_cell {:?} {}", src_val[cnter], cnter);
                             dest_cell.value = src_val[cnter];
                             dest_cell.formula =
                                 ParsedRHS::SingleValue(Operand::Number(dest_cell.value)); // Clear formula
@@ -833,12 +749,6 @@ impl Spreadsheet {
             return;
         }
 
-        // Go ahead if it's not COPY form
-        // new
-        // println!("starting find_depends");
-        // // get the starting time
-        // let start_time = Instant::now();
-        // new
         // Find dependencies
         let mut r1 = 0;
         let mut r2 = 0;
@@ -877,16 +787,6 @@ impl Spreadsheet {
             _ => {}
         };
 
-        // let (r1, r2, c1, c2, range_bool) = match self.find_depends(formula) {
-        //     Ok(deps) => deps,
-        //     Err(_) => {
-        //         *status_out = "invalid command".to_string();
-        //         return;
-        //     }
-        // };
-        // new
-        // println!("find_depends took {:?}", start_time.elapsed().as_secs_f64());
-        // new
         // Check for cycles
         if self.first_step_find_cycle((row, col), (r1, c1), (r2, c2), is_range) {
             *status_out = "Cycle Detected".to_string();
@@ -1113,8 +1013,11 @@ impl Spreadsheet {
                             //     ret.3 = ParsedRHS::Function { name: FunctionName::, args: (Operand::Cell(start_row as usize,start_col as usize),Operand::Cell(end_row as usize, end_col as usize)) };
                             //     return ret;
                             // }
+                            // eprintln!("Outside fault function");
                             if let Some(fname) = FunctionName::from_strng(func) {
+                                // eprintln!("Function name: {}", func);
                                 if func == "COPY" {
+                                    // eprintln!("Copy function detected");
                                     let dest_row = ret.1;
                                     let dest_col = ret.2;
                                     // Calculate offsets
@@ -1135,7 +1038,7 @@ impl Spreadsheet {
                                             name: fname,
                                             args: (
                                                 Operand::Cell(start_row, start_col),
-                                                Operand::Cell(final_row, final_col),
+                                                Operand::Cell(end_row, end_col),
                                             ),
                                         };
                                         return ret;
