@@ -8,6 +8,8 @@ use lettre::{Message, SmtpTransport, Transport};
 use rand::Rng;
 #[cfg(feature = "web")]
 use std::error::Error;
+#[cfg(feature = "web")]
+use std::fs;
 
 #[cfg(feature = "web")]
 pub struct Mailer {
@@ -17,7 +19,18 @@ pub struct Mailer {
 #[cfg(feature = "web")]
 impl Mailer {
     pub fn new() -> Result<Self, Box<dyn Error>> {
-        let creds = Credentials::new("cs1230807@iitd.ac.in".to_string(), "f1869ebc".to_string());
+        // Read the email credentials from a config file.
+        // The file "config/mail_credentials.txt" should have the email on the first line and the password on the second.
+        let creds_data = fs::read_to_string("config/mail_credentials.txt")?;
+        let mut lines = creds_data.lines();
+        let email = lines.next().unwrap_or("").trim().to_string();
+        let password = lines.next().unwrap_or("").trim().to_string();
+        
+        if email.is_empty() || password.is_empty() {
+            return Err("Invalid mail credentials in config file".into());
+        }
+
+        let creds = Credentials::new(email, password);
 
         let tls_parameters = TlsParameters::new("smtp.iitd.ac.in".to_string())?;
 
