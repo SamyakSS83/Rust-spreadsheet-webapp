@@ -1,3 +1,5 @@
+#![cfg(not(tarpaulin_include))]
+
 use cop::app;
 
 #[tokio::main]

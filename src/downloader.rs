@@ -1,3 +1,5 @@
+#![cfg(not(tarpaulin_include))]
+
 use crate::spreadsheet::Spreadsheet;
 use std::error::Error;
 /// Convert spreadsheet to CSV format
