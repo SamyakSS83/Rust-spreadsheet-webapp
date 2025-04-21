@@ -1,8 +1,8 @@
 use crate::cell::{Cell, cell_create};
-use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
 use lazy_static::lazy_static;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 
 lazy_static! {
     static ref FUNC_REGEX: Regex = Regex::new(r"^([A-Za-z]+)\((.*)\)$").unwrap();
@@ -173,8 +173,8 @@ impl Spreadsheet {
                     Operand::Number(_) => (0, 0),
                 };
 
-                let count = (r2 - r1 + 1) as usize * (c2 - c1 + 1) as usize;
-                let mut values = Vec::with_capacity(count);
+                let mut values =
+                    Vec::with_capacity((r2 - r1 + 1) as usize * (c2 - c1 + 1) as usize);
 
                 for i in r1..=r2 {
                     for j in c1..=c2 {
@@ -186,8 +186,6 @@ impl Spreadsheet {
                                     return (0, error);
                                 }
                                 values.push(c.value);
-                            } else {
-                                values.push(0);
                             }
                         }
                     }
@@ -195,16 +193,10 @@ impl Spreadsheet {
 
                 match name {
                     FunctionName::Min => {
-                        if values.is_empty() {
-                            return (0, error);
-                        }
                         error = false;
                         return (*values.iter().min().unwrap_or(&0), error);
                     }
                     FunctionName::Max => {
-                        if values.is_empty() {
-                            return (0, error);
-                        }
                         error = false;
                         return (*values.iter().max().unwrap_or(&0), error);
                     }
@@ -213,9 +205,6 @@ impl Spreadsheet {
                         return (values.iter().sum(), error);
                     }
                     FunctionName::Avg => {
-                        if values.is_empty() {
-                            return (0, error);
-                        }
                         error = false;
                         let sum: i32 = values.iter().sum();
                         return (sum / values.len() as i32, error);
@@ -244,7 +233,7 @@ impl Spreadsheet {
                 (0, error)
             }
             ParsedRHS::Sleep(op) => {
-                let val;
+                let mut val = 0;
                 let error = false;
 
                 match op {
@@ -258,8 +247,6 @@ impl Spreadsheet {
                             if cell.error {
                                 return (val, true);
                             }
-                        } else {
-                            val = 0;
                         }
                     }
                 }
@@ -300,7 +287,7 @@ impl Spreadsheet {
                     '/' => {
                         if rhs_val == 0 {
                             has_error = true;
-                            0 
+                            0
                         } else {
                             lhs_val / rhs_val
                         }
@@ -314,20 +301,16 @@ impl Spreadsheet {
                 (result, has_error)
             }
 
-            ParsedRHS::SingleValue(num) => {
-                match num {
-                    Operand::Cell(r, c) => {
-                        let index = (r - 1) as usize * self.cols as usize + (c - 1) as usize;
-                        self.cells[index]
-                            .as_ref()
-                            .map_or((0, false), |cell| (cell.value, cell.error))
-                    }
-                    Operand::Number(x) => (*x, false),
+            ParsedRHS::SingleValue(num) => match num {
+                Operand::Cell(r, c) => {
+                    let index = (r - 1) as usize * self.cols as usize + (c - 1) as usize;
+                    self.cells[index]
+                        .as_ref()
+                        .map_or((0, false), |cell| (cell.value, cell.error))
                 }
-            }
-            ParsedRHS::None => {
-                (0, false)
-            }
+                Operand::Number(x) => (*x, false),
+            },
+            ParsedRHS::None => (0, false),
         }
     }
 
@@ -389,10 +372,7 @@ impl Spreadsheet {
     ) -> bool {
         let index = (r_ - 1) as usize * self.cols as usize + (c_ - 1) as usize;
 
-        let start_node = match &self.cells[index] {
-            Some(cell) => cell,
-            None => return false,
-        };
+        let start_node = self.cells[index].as_ref().unwrap();
 
         let mut visited = BTreeSet::new();
         let mut stack = vec![&**start_node];
@@ -403,11 +383,8 @@ impl Spreadsheet {
     pub fn remove_old_dependents(&mut self, r: i16, c: i16) {
         let formula = {
             let index = (r - 1) as usize * self.cols as usize + (c - 1) as usize;
-            if let Some(curr_cell) = self.cells.get(index).and_then(|opt| opt.as_ref()) {
-                curr_cell.formula.clone()
-            } else {
-                ParsedRHS::None
-            }
+            let curr_cell = self.cells[index].as_ref().unwrap();
+            curr_cell.formula.clone()
         };
 
         match formula {
@@ -430,7 +407,7 @@ impl Spreadsheet {
 
                             if let Some(dep_cell) =
                                 self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
-                            { 
+                            {
                                 crate::cell::cell_dep_remove(dep_cell, r, c);
                             }
                         }
@@ -443,21 +420,19 @@ impl Spreadsheet {
                 rhs,
             } => {
                 if let Operand::Cell(dep_r, dep_c) = lhs {
-                    let dep_index =
-                        (dep_r - 1) as usize * self.cols as usize + (dep_c - 1) as usize;
-
-                    if let Some(dep_cell) =
-                        self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
+                    if let Some(dep_cell) = self
+                        .cells
+                        .get_mut((dep_r - 1) as usize * self.cols as usize + (dep_c - 1) as usize)
+                        .and_then(|opt| opt.as_mut())
                     {
                         crate::cell::cell_dep_remove(dep_cell, r, c);
                     }
                 }
                 if let Operand::Cell(dep_r, dep_c) = rhs {
-                    let dep_index =
-                        (dep_r - 1) as usize * self.cols as usize + (dep_c - 1) as usize;
-
-                    if let Some(dep_cell) =
-                        self.cells.get_mut(dep_index).and_then(|opt| opt.as_mut())
+                    if let Some(dep_cell) = self
+                        .cells
+                        .get_mut((dep_r - 1) as usize * self.cols as usize + (dep_c - 1) as usize)
+                        .and_then(|opt| opt.as_mut())
                     {
                         crate::cell::cell_dep_remove(dep_cell, r, c);
                     }
@@ -491,13 +466,6 @@ impl Spreadsheet {
         self.remove_old_dependents(r, c);
 
         if is_range {
-            let r1 = start_row - 1;
-            let r2 = end_row - 1;
-
-            if end_col < start_col || (start_col == end_col && r2 < r1) {
-                return -1;
-            }
-
             for r_it in start_row..=end_row {
                 for c_it in start_col..=end_col {
                     let dep_index = (r_it - 1) as usize * self.cols as usize + (c_it - 1) as usize;
@@ -575,7 +543,6 @@ impl Spreadsheet {
         rhs: ParsedRHS,
         status_out: &mut String,
     ) {
-
         let index = (row - 1) as usize * self.cols as usize + (col - 1) as usize;
 
         if let ParsedRHS::Function {
@@ -587,16 +554,15 @@ impl Spreadsheet {
             let dest_col = col;
             let row_offset = dest_row as isize - start_row as isize;
             let col_offset = dest_col as isize - start_col as isize;
-            
+
             let mut src_val: Vec<i32> = Vec::new();
             let mut src_err: Vec<bool> = Vec::new();
             for r in start_row..=end_row {
                 for c in start_col..=end_col {
                     let src_index = ((r - 1) * self.cols + (c - 1)) as usize;
-                    if let Some(src_cell) = self.cells.get(src_index).and_then(|opt| opt.as_ref()) {
-                        src_val.push(src_cell.value);
-                        src_err.push(src_cell.error);
-                    }
+                    let src_cell = self.cells[src_index].as_ref().unwrap();
+                    src_val.push(src_cell.value);
+                    src_err.push(src_cell.error);
                 }
             }
             let mut cnter = 0;
@@ -607,21 +573,17 @@ impl Spreadsheet {
                         + (c as isize + col_offset - 1))
                         as usize;
                     if dest_index < self.cells.len() {
-                        if let Some(dest_cell) =
-                            self.cells.get_mut(dest_index).and_then(|opt| opt.as_mut())
-                        {
-                            self.undo_stack.push((
-                                dest_cell.formula.clone(),
-                                dest_cell.row,
-                                dest_cell.col,
-                            ));
-                            println!("dest_cell {:?} {}", src_val[cnter], cnter);
-                            dest_cell.value = src_val[cnter];
-                            dest_cell.formula =
-                                ParsedRHS::SingleValue(Operand::Number(dest_cell.value));
-                            dest_cell.error = src_err[cnter];
-                            cnter += 1;
-                        }
+                        let dest_cell = self.cells[dest_index].as_mut().unwrap();
+                        self.undo_stack.push((
+                            dest_cell.formula.clone(),
+                            dest_cell.row,
+                            dest_cell.col,
+                        ));
+                        dest_cell.value = src_val[cnter];
+                        dest_cell.formula =
+                            ParsedRHS::SingleValue(Operand::Number(dest_cell.value));
+                        dest_cell.error = src_err[cnter];
+                        cnter += 1;
                     }
                 }
             }
@@ -672,47 +634,26 @@ impl Spreadsheet {
         }
 
         self.update_dependencies((row, col), (r1, c1), (r2, c2), is_range);
-        let cell = match self.cells.get_mut(index).and_then(|opt| opt.as_mut()) {
-            Some(cell) => cell,
-            None => {
-                *status_out = "invalid args".to_string();
-                return;
-            }
-        };
+        let cell = self.cells[index].as_mut().unwrap();
         self.undo_stack
             .push((cell.formula.clone(), cell.row, cell.col));
 
         cell.formula = rhs;
-        let cell = match self.cells.get(index).and_then(|opt| opt.as_ref()) {
-            Some(cell) => cell,
-            None => {
-                *status_out = "invalid args".to_string();
-                return;
-            }
-        };
+        let cell = self.cells[index].as_ref().unwrap();
 
         let sorted_cells = self.topo_sort(cell);
 
         for (row, col) in sorted_cells.iter() {
             let sorted_index = (*row - 1) as usize * self.cols as usize + (*col - 1) as usize;
 
-            let formula = match self.cells.get(sorted_index).and_then(|opt| opt.as_ref()) {
-                Some(cell) => &cell.formula,
-                None => {
-                    continue; 
-                }
-            };
+
+            let formula = &self.cells[sorted_index].as_ref().unwrap().formula;
 
             let (value, error_cell) = self.spreadsheet_evaluate_expression(formula, *row, *col);
 
-            if let Some(sorted_cell) = self
-                .cells
-                .get_mut(sorted_index)
-                .and_then(|opt| opt.as_mut())
-            {
-                sorted_cell.value = value;
-                sorted_cell.error = error_cell;
-            }
+            let sorted_cell = self.cells[sorted_index].as_mut().unwrap();
+            sorted_cell.value = value;
+            sorted_cell.error = error_cell;
         }
 
         *status_out = "ok".to_string();
@@ -801,7 +742,7 @@ impl Spreadsheet {
             } else {
                 if let Some(colon_pos) = args.find(':') {
                     let (start, end) = args.split_at(colon_pos);
-                    let end = &end[1..]; 
+                    let end = &end[1..];
 
                     if let (Some((start_row, start_col)), Some((end_row, end_col))) = (
                         self.spreadsheet_parse_cell_name(start.trim()),

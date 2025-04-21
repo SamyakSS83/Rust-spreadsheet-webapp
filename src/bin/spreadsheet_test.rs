@@ -525,6 +525,18 @@ mod spreadsheet_tests {
 
         // Test cycle detection
         assert!(sheet.first_step_find_cycle((1, 4), (1, 1), (2, 2), true));
+
+
+        let mut sheet = Spreadsheet::spreadsheet_create(100, 100).unwrap();
+        // In dependencies of A1, add B1 to B10 using for loop
+        for i in 1..=10 {
+            let a1_idx = 0 * 100 + 0;
+            if let Some(cell_a1) = sheet.cells[a1_idx].as_mut() {
+                cell_dep_insert(cell_a1, i, 2);
+            }
+        }
+        assert!(sheet.first_step_find_cycle((1,1), (1,2), (0,0), false));
+
     }
 
     #[test]
@@ -1047,6 +1059,16 @@ mod spreadsheet_tests {
             assert!(!cell.error);
         }
 
+        // Test for sleep with Operand::Cell
+        let sleep_expr = ParsedRHS::Sleep(Operand::Cell(6, 1)); // Sleep for 0 seconds
+        sheet.spreadsheet_set_cell_value(9, 1, sleep_expr, &mut status);
+        assert_eq!(status, "ok");
+        let a9_idx = 8 * 10 + 0;
+        if let Some(cell) = sheet.cells[a9_idx].as_ref() {
+            assert_eq!(cell.value, 0); // Sleep function should return cell value
+            assert!(!cell.error);
+        }
+
         //Test for Copy type formula
         let copy_expr = ParsedRHS::Function {
             name: FunctionName::Copy,
@@ -1539,6 +1561,9 @@ mod spreadsheet_tests {
                 rhs: Operand::Number(3),
             }
         );
+
+        let (valid, _, _, _) = sheet.is_valid_command("A1", "");
+        assert!(!valid); // Empty formula
     }
 
     #[test]
