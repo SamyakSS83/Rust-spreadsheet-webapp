@@ -1,90 +1,262 @@
 /*!
 # Spreadsheet Application
 
-A browser-based spreadsheet application with Excel-like functionality, built in Rust.
+A browser-based spreadsheet application with Excel-like functionality, fully implemented in Rust.
 
-## Overview
+This application is a complete rewrite of a legacy spreadsheet tool from C to Rust, enhanced with modern features and a browser GUI using WebAssembly. It features a modular, maintainable, and performant design with support for advanced operations like dependency-tracked formulas, graph plotting, and file sharing.
 
-This project is a migration of an existing spreadsheet application from C to Rust,
-enhancing its functionality and integrating a browser-based GUI. The application provides
-an intuitive interface with navigation, support for complex formulas, graph plotting,
-and enhanced editing features such as copy and paste, formula management, and more.
+---
 
-## Architecture
+## 📦 Project Summary
 
-The application follows a client-server architecture:
+- **Frontend**: HTML, CSS, WebAssembly (via `eframe`)
+- **Backend**: Rust (via `actix-web`)
+- **Persistence**: Gzip + Bincode for `.bin.gz`; CSV/XLSX support
+- **Graph Support**: Line, bar, area, scatter via `plotters`
+- **Authentication**: Sessions, password reset, cookie-based auth
+- **Key Features**: Copy/paste, undo/redo, formula evaluation, dependency graph, public/private sheet sharing
+
+---
+
+## 🏗️ Architecture
 
 ### Frontend Layer
-- **Technologies**: HTML, CSS, WebAssembly
-- **Key Components**:
-  - Cell Grid Renderer - Displays the active 10×10 grid
-  - Formula Bar Component - For formula entry and editing
-  - Navigation - Keyboard/mouse/touchpad navigation
-  - Event Handler - Processes user actions and communicates with backend
+- Written in HTML/CSS + WebAssembly using `eframe`
+- Renders a 10×10 visible grid window
+- Formula bar component for inline editing
+- Handles mouse, keyboard, and touchpad interactions
+- Sends commands to backend via WebAssembly bindings
 
 ### Backend Layer
-- **Technologies**: Rust, actix-web
-- **Core Components**:
-  - Cell Storage Engine - Maintains spreadsheet data structure (up to 999 rows × 18,278 columns)
-  - Formula Evaluator - Processes formulas and functions
-  - Dependency Graph - Tracks cell relationships for efficient recalculation
-  - Recalculation Engine - Updates dependent cells when values change
-  - Error Handler - Manages error conditions and circular references
-  - Command Processor - Interprets user commands and delegates actions
+- Built using `actix-web`
+- Contains spreadsheet logic, cell storage, command processing
+- Manages dependencies, error handling, and formula evaluation
+- Ensures recalculations respect topological order
+- Implements cell cycle detection and error propagation
 
 ### Data Persistence Layer
-- File Storage with Gzip compression and bincode serialization
-- Custom binary (.bin.gz) and CSV export/import
-- Version tracking for undo/redo operations
+- Custom binary format with `.bin.gz` extension
+- Serialization via `bincode` + `serde`, compression with `gzip`
+- File versioning supports undo/redo state tracking
+- CSV and XLSX export via `downloader` module
 
-## Key Features
+---
 
-- Formula support: Arithmetic operations, functions (SUM, MIN, MAX, AVG, STDEV)
-- Copy/paste functionality
-- Cell dependency tracking and circular reference detection
-- Undo capability
-- File operations (save, load, export)
-- Graph plotting (line, bar, scatter, area)
-- User authentication and session management
-- Public/private sheet sharing
+## 🔧 Modules
 
-## Modules
+### `cell` Module
+- Core `Cell` structure storing value, formula, dependents
+- Methods for dependency management (insert, remove, check)
+- Formula parsing and validation
+- Location tracking via row/column coordinates
 
-- **cell**: Cell struct and functions (initialization, dependency management)
-- **spreadsheet**: Core module for spreadsheet functionality (formula evaluation, error handling)
-- **login**: User authentication and session management
-- **mailer**: Password reset email functionality
-- **saving**: Spreadsheet persistence with compression
-- **downloader**: Export functionality (CSV, XLSX)
-- **graph**: Graph generation from spreadsheet data
-- **app**: Routing and middleware
+### `spreadsheet` Module
+- Main logic; manages grid, evaluation, updates
+- Formula evaluation engine with function support
+- Dependency tracking with cycle detection
+- Topological sorting for correct update order
+- Command processing (set cell, copy/paste, undo/redo)
+- Error handling and propagation
 
-## Design Highlights
+### `login` Module
+- User registration, session validation, password reset
+- Cookie-based authentication system
+- User data persistence via JSON
+- File access permission management
 
-- Object-oriented approach with encapsulated functionality
-- Efficient formula parsing with regex
-- Optimized dependency management (vector/ordered set hybrid)
-- Topological sorting for efficient recalculation
-- Memory-efficient data structures
+### `mailer` Module
+- Sends password reset links via email
+- Template-based email generation
+- SMTP connection management
 
-## Usage
+### `saving` Module
+- Save/load logic with gzip+bincode
+- File version management
+- State tracking for undo/redo operations
+- Compressed binary format for efficient storage
 
-The application provides a web interface accessed through a browser, with:
+### `downloader` Module
+- Data export in CSV/XLSX formats
+- Format conversion utilities
+- Download request handling
 
-- Cell editing and formula entry
-- Navigation controls
-- File operations menu
-- Graph generation capabilities
-- User authentication
+### `graph` Module
+- Graph plotting via `plotters`
+- Support for line, bar, area, scatter charts
+- Customizable titles, labels, and dimensions
+- Image data generation for browser display
 
-## REST API Endpoints
+---
 
-- `/load/{filename}` - Retrieves spreadsheet data
-- `/save/{filename}` - Persists current state
-- `/edit/{cell}` - Modifies cell content
-- `/copy/{range}`, `/paste/{cell}` - Clipboard operations
-- `/formula/{string}` - Processes formula input
-- `/release/{range}` - Reverts cell modifications
+## 🌐 Webserver
+
+### Public Endpoints
+- **Authentication**: `/login`, `/signup`, `/logout`, `/reset-password`, `/forgot-password`, `/change-password`
+- **Public Access**: `/:username/:sheet_name` for read-only sheet access
+- **API Access**: `/api/sheet`, `/api/cell/:cell_name`, `/api/sheet_info` for read-only data
+- **Static Content**: Static assets from `/static`
+
+### Protected Endpoints
+- **Sheet Management**: `/sheet` for editing UI
+- **Data Operations**: `/api/update_cell`, `/api/save`, `/api/load`, `/api/graph`, `/api/export`
+- **Downloads**: `/api/download/csv`, `/api/download/xlsx`
+- **File Operations**: `/:username` (file listing), `/:username/create` (create new sheet),
+  `/:username/:sheet_name/status` (update access), `/:username/:sheet_name/delete` (deletion)
+
+### Middleware Logic
+- Auth checks via `require_auth` middleware for protected endpoints
+- Session map maintained for user state with expiration time
+- Public/private file access logic via metadata in `list.json`
+- Redirection to login page for unauthorized access attempts
+
+---
+
+## 🔍 Features
+
+### Formula Support
+- Basic operations: `+`, `-`, `*`, `/`
+- Functions: `SUM`, `AVG`, `MAX`, `MIN`, `STDEV`, `SLEEP`
+- Formula processing with regex-based parsing
+- One-time parsing optimization for performance
+
+### Dependency Management
+- Dependency graph with automated updating
+- Cycle detection algorithm to prevent circular references
+- Topological sort for ordered recalculation
+- Error propagation through dependent cells
+
+### User Interface
+- Copy/paste support with range validation
+- Undo/redo through versioned states
+- Navigation via keyboard/mouse/touchpad
+- Formula bar for direct formula editing
+
+### Error Handling
+- Division by zero detection and propagation
+- Syntax error identification in formulas
+- Cycle detection with clear error messages
+- Cascading errors through dependent cells
+
+### Data Visualization
+- Graph plotting with customizable options
+- Support for multiple chart types
+- Title and axis labeling
+- Dimension configuration
+
+### Sharing & Access Control
+- Public/private spreadsheet access
+- Spreadsheet sharing by URL
+- User-based access control
+- Metadata tracking of file ownership
+
+---
+
+## 🔒 Security Model
+
+- Input sanitization for formulas and commands
+- Public/private access enforcement via metadata
+- Session-based access control with expiration
+- Authentication middleware for protected endpoints
+- Cookie validation for session management
+
+---
+
+## 🧠 Key Design Decisions
+
+### Data Structures
+- `Spreadsheet`: Container for cells, viewport management, undo stack
+- `Cell`: Value, formula, dependents, location storage
+- `Formula` enum: Extensible function handling with variant types
+- Hybrid approach for dependency tracking:
+  - `Vec` for initial, small dependency lists
+  - `OrderedSet` (AVL tree) for larger dependency collections
+- Tuple indices `(row, col)` instead of strings for memory efficiency
+
+### Optimizations
+- `regex` for one-time formula parsing (no repeated parsing)
+- `lazy_static!` for precompiled regexes
+- Topological sort for dependency-ordered recalculation
+- `u16` for index compression to save memory
+- Stack-based recursion elimination
+- Sparse cell storage to reduce memory footprint
+
+### Communication Flow
+1. User actions trigger WebAssembly functions
+2. WebAssembly communicates with Rust backend
+3. Backend processes commands and updates state
+4. Dependency resolution triggers recalculation
+5. Updated state returns to frontend for rendering
+6. Changes persist to storage in compressed format
+
+---
+
+## 📉 Performance Optimizations
+
+- Reduced memory footprint with sparse cell storage
+- Use of `u16` for row/column indices instead of larger types
+- Optimized dependency graph updates with topological ordering
+- No redundant formula parsing (one-time evaluation)
+- Precompiled regex + tuple indices for faster dependency lookups
+- Profiling with `flamegraph` used to identify and improve bottlenecks
+- Optimized memory allocation by reusing data structures
+
+---
+
+## ⚠️ Covered Edge Cases
+
+### Circular Dependencies
+- Direct cycles (e.g., A1 = B1, B1 = A1)
+- Indirect cycles through multiple cells
+- Self-referential cells (e.g., A1 = A1)
+- Non-obvious cycles (e.g., A1 = 0*B1, B1 = A1)
+
+### Formula Errors
+- Invalid formula syntax (e.g., 1++1, unrecognized functions)
+- Missing arguments (e.g., MAX(), SLEEP())
+- Division by zero and error cascading
+- Out-of-bounds cell references
+
+### Sleep Functions
+- Normal sleep operation
+- Cascaded SLEEP cells
+- Negative sleep values
+- Error propagation through sleep functions
+
+### General Edge Cases
+- Empty/invalid commands
+- Large scrolling behavior
+- Dependency graph correctness
+- Error propagation through complex dependencies
+
+---
+
+## 🧪 Primary Data Structures
+
+- **Spreadsheet**: Core container storing cells, viewport, and undo stack
+- **Cell**: Stores formula, value, dependents, and location
+- **Formula (enum)**: Represents different formula types with variant data
+- **Vector**: Used for temporary storage and initial dependency lists
+- **OrderedSet (AVL Tree)**: For efficient storage of large dependency collections
+- **Directed Acyclic Graph**: Models dependencies between cells
+- **Linked List**: Used for topological sort ordering
+- **Stack**: Implements undo/redo logic and eliminates recursion
+
+---
+
+## ➕ Future Enhancements
+
+- Multicellular formulas (e.g., `SUM(A1:B3)`)
+- Drag and drop support in GUI
+- VLOOKUP/HLOOKUP and more Excel functions
+- Multi-cell selection in GUI
+- Floating-point formula support (e.g., `f32` vs `i32`)
+- Further performance optimizations for large spreadsheets
+
+---
+
+## 🔗 GitHub Repository
+
+[https://github.com/SamyakSS83/cop](https://github.com/SamyakSS83/cop)
 */
 
 // Re-export all modules so they appear in the documentation
