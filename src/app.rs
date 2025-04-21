@@ -18,7 +18,7 @@ use tower_http::services::ServeDir;
 
 use crate::downloader;
 use crate::graph::{GraphOptions, GraphType, create_graph};
-use crate::login::{self, User, UserCredentials};
+use crate::login::{self, User, UserCredentials,serve_forgot_password_page, serve_reset_password_page, serve_change_password_page};
 use crate::saving;
 use crate::spreadsheet::{FunctionName, Operand, ParsedRHS, Spreadsheet};
 
@@ -96,6 +96,15 @@ pub async fn run(rows: i16, cols: i16) -> Result<(), Box<dyn std::error::Error>>
             get(login::serve_signup_page).post(login::handle_signup),
         )
         .route("/logout", get(login::handle_logout))
+        .route("/forgot-password", 
+            get(serve_forgot_password_page)
+            .post(login::handle_forgot_password))
+        .route("/reset-password", 
+            get(serve_reset_password_page)
+            .post(login::handle_reset_password))
+        .route("/change-password",
+            get(serve_change_password_page)
+            .post(login::handle_change_password))
         .nest_service("/static", ServeDir::new("static"));
 
     // 2) Build the protected routes and apply auth‐middleware
