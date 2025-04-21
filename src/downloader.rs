@@ -46,18 +46,12 @@ pub fn to_xlsx(sheet: &Spreadsheet) -> Result<Vec<u8>, Box<dyn Error>> {
     let mut workbook = Workbook::new();
     let mut worksheet = Worksheet::new();
 
-    // Add column headers
-    for c in 1..=sheet.cols {
-        worksheet.write_string(0, (c - 1) as u16, column_to_letter(c as u16))?;
-    }
-
-    // Add cell data
+    // Write cell data
     for r in 1..=sheet.rows {
         for c in 1..=sheet.cols {
             let index = ((r - 1) * sheet.cols + (c - 1)) as usize;
             if let Some(cell) = &sheet.cells[index] {
-                // Write cell value (using row+1 to account for header)
-                worksheet.write_number(r as u32, (c - 1) as u16, cell.value as f64)?;
+                worksheet.write_number((r-1) as u32, (c - 1) as u16, cell.value as i32)?;
             }
         }
     }
