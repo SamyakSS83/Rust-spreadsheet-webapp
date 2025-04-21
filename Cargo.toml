@@ -5,6 +5,7 @@ edition = "2024"
 
 [profile.release]
 debug = true
+opt-level = 3
 
 # Core dependencies needed by all parts of the application
 [dependencies]
