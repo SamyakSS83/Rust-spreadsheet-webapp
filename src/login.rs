@@ -1,6 +1,8 @@
 #![cfg(not(tarpaulin_include))]
 
 #[cfg(feature = "web")]
+use std::path::PathBuf;
+#[cfg(feature = "web")]
 use crate::mailer::{Mailer, generate_reset_code};
 #[cfg(feature = "web")]
 use crate::saving;

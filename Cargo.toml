@@ -50,15 +50,10 @@ urlencoding = {version = "2.1.0", optional = true}
 default = []
 web = ["tokio", "axum", "axum-extra", "tower-http", "tower", "env_logger", "actix-web", "actix-files", "handlebars", "wasm-bindgen", "js-sys","lettre","rand","urlencoding"]
 
-# CLI spreadsheet binary (no web dependencies)
-[[bin]]
-name = "spreadsheet"
-path = "src/bin/cli.rs"
-
 # Web server binary (requires web dependencies)
 [[bin]]
 name = "website" 
-path = "src/bin/web.rs"
+path = "src/web.rs"
 required-features = ["web"]
 
 # Test binaries
