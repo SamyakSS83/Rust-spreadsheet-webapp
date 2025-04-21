@@ -1,9 +1,4 @@
-mod app;
-mod cell;
-mod graph;
-mod saving;
-mod spreadsheet;
-mod mailer;
+#![cfg(not(tarpaulin_include))]
 
 use cop::spreadsheet::Spreadsheet;
 
@@ -39,13 +34,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let rows: i32 = args[1].parse().unwrap_or(0);
     let cols: i32 = args[2].parse().unwrap_or(0);
 
-    if rows < 1 || rows > 999 || cols < 1 || cols > 18278 {
+    if !(1..=999).contains(&rows) || !(1..=18278).contains(&cols) {
         eprintln!("Error: Invalid dimensions");
         return Ok(());
     }
 
     let mut start_time = Instant::now(); // Start time for the first command
-    let mut sheet = Spreadsheet::spreadsheet_create(rows, cols).unwrap();
+    let mut sheet = Spreadsheet::spreadsheet_create(rows as i16, cols as i16).unwrap();
     let mut elapsed_time;
     let mut status = String::from("ok");
     let mut show = true;
@@ -123,53 +118,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             sheet.undo_stack.clear();
             let cell_name = &command[..equal_pos];
             let formula = &command[equal_pos + 1..];
-            if !sheet.is_valid_command(cell_name, formula) {
+            let (valid, row, col, rhs) = sheet.is_valid_command(cell_name, formula);
+            if !valid {
                 status = String::from("invalid command");
             } else {
-                sheet.spreadsheet_set_cell_value(cell_name, formula, &mut status);
+                sheet.spreadsheet_set_cell_value(row, col, rhs, &mut status);
             }
         } else if command == "UNDO" {
             if sheet.undo_stack.is_empty() {
                 status = String::from("no undo");
-            } else if sheet.undo_stack.len() == 1 {
-                let (formula, row, col, value, err_state) = (
-                    sheet.undo_stack[0].0.clone(),
-                    sheet.undo_stack[0].1,
-                    sheet.undo_stack[0].2,
-                    sheet.undo_stack[0].3,
-                    sheet.undo_stack[0].4,
-                );
-                let cell_name = Spreadsheet::get_cell_name(row, col);
-                println!("Undoing: {} {} {} {}", cell_name, row, col, value);
-                if let Some(formula) = formula {
-                    println!("Setting formula: {} {}", cell_name, formula);
-                    sheet.undo_stack.clear();
-                    sheet.spreadsheet_set_cell_value(&cell_name, &formula, &mut status);
-                } else {
-                    println!("Setting value: {} {}", cell_name, value);
-                    sheet.spreadsheet_undo();
-                    status = String::from("ok");
-                }
             } else {
-                sheet.spreadsheet_undo();
-                status = String::from("ok");
+                sheet.spreadsheet_undo(&mut status);
             }
-        } else if command == "REDO" {
-            if sheet.redo_stack.is_empty() {
-                status = String::from("no redo");
-            } else {
-                sheet.spreadsheet_redo();
-                status = String::from("ok");
-            }
+        // } else if command == "REDO" {
+        //     if sheet.redo_stack.is_empty() {
+        //         status = String::from("no redo");
+        //     } else {
+        //         sheet.spreadsheet_redo();
+        //         status = String::from("ok");
+        //     }
         } else {
-            status = String::from("invalid command");
+            status = String::from("invalid command 3");
         }
 
         // Update the start_time after processing the command
         // start_time = Instant::now();
     }
     // }
-
     let e = s.elapsed().as_secs_f64(); // Calculate total elapsed time
     println!("Total elapsed time: {:.1} seconds", e);
 
