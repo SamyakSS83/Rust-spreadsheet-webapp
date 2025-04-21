@@ -11,6 +11,7 @@ use axum::{
 };
 use axum_extra::extract::cookie::CookieJar;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::net::TcpListener;
@@ -18,13 +19,17 @@ use tower_http::services::ServeDir;
 
 use crate::downloader;
 use crate::graph::{GraphOptions, GraphType, create_graph};
-use crate::login::{self, User, UserCredentials,serve_forgot_password_page, serve_reset_password_page, serve_change_password_page};
+use crate::login::{
+    self, User, UserCredentials, serve_change_password_page, serve_forgot_password_page,
+    serve_reset_password_page,
+};
 use crate::saving;
 use crate::spreadsheet::{FunctionName, Operand, ParsedRHS, Spreadsheet};
 
 pub struct AppState {
-    sheet: Mutex<Box<Spreadsheet>>,
-    original_path: Mutex<Option<String>>,
+    pub sheet: Mutex<Box<Spreadsheet>>,
+    pub original_path: Mutex<Option<String>>,
+    pub public_sheets: Mutex<HashSet<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -71,6 +76,17 @@ struct GraphRequest {
     graph_type: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct SheetEntry {
+    name: String,
+    status: String, // "public" or "private"
+}
+
+#[derive(Debug, Deserialize)]
+struct ChangeStatusForm {
+    status: String,
+}
+
 pub async fn run(rows: i16, cols: i16) -> Result<(), Box<dyn std::error::Error>> {
     // Initialize the database
     login::init_database()?;
@@ -82,6 +98,7 @@ pub async fn run(rows: i16, cols: i16) -> Result<(), Box<dyn std::error::Error>>
     let app_state = Arc::new(AppState {
         sheet: Mutex::new(sheet),
         original_path: Mutex::new(None),
+        public_sheets: Mutex::new(HashSet::new()),
     });
 
     // 1) Build the public (no‐auth) routes
@@ -96,23 +113,33 @@ pub async fn run(rows: i16, cols: i16) -> Result<(), Box<dyn std::error::Error>>
             get(login::serve_signup_page).post(login::handle_signup),
         )
         .route("/logout", get(login::handle_logout))
-        .route("/forgot-password", 
-            get(serve_forgot_password_page)
-            .post(login::handle_forgot_password))
-        .route("/reset-password", 
-            get(serve_reset_password_page)
-            .post(login::handle_reset_password))
-        .route("/change-password",
-            get(serve_change_password_page)
-            .post(login::handle_change_password))
+        .route(
+            "/forgot-password",
+            get(serve_forgot_password_page).post(login::handle_forgot_password),
+        )
+        .route(
+            "/reset-password",
+            get(serve_reset_password_page).post(login::handle_reset_password),
+        )
+        .route(
+            "/change-password",
+            get(serve_change_password_page).post(login::handle_change_password),
+        )
+        // Public routes for accessing sheets
+        .route("/:username/:sheet_name", get(load_user_file))
+        // Add these API endpoints to public routes for public sheets
+        .route("/api/sheet", get(get_sheet_data))
+        .route("/api/cell/:cell_name", get(get_cell))
+        .route("/api/sheet_info", get(get_sheet_info))
         .nest_service("/static", ServeDir::new("static"));
 
     // 2) Build the protected routes and apply auth‐middleware
     let protected = Router::new()
         // spreadsheet endpoints
         .route("/sheet", get(serve_sheet))
-        .route("/api/sheet", get(get_sheet_data))
-        .route("/api/cell/:cell_name", get(get_cell))
+        // .route("/api/sheet", get(get_sheet_data))
+        // .route("/api/cell/:cell_name", get(get_cell))
+        // .route("/api/sheet_info", get(get_sheet_info))
         .route("/api/update_cell", post(update_cell))
         .route("/api/save", post(save_spreadsheet))
         .route("/api/export", post(export_spreadsheet))
@@ -120,13 +147,18 @@ pub async fn run(rows: i16, cols: i16) -> Result<(), Box<dyn std::error::Error>>
         .route("/api/graph", post(generate_graph))
         .route("/api/download/csv", get(download_csv))
         .route("/api/download/xlsx", get(download_xlsx))
-        .route("/api/sheet_info", get(get_sheet_info))
         .route("/api/save_with_name", post(save_spreadsheet_with_name))
         // user file routes
         .route("/:username", get(login::list_files))
-        .route("/:username/create", get(login::serve_create_sheet_form).post(login::handle_create_sheet))
-        .route("/:username/:sheet_name", get(load_user_file))  // Add this line
-        .route("/:username/:sheet_name/delete", post(login::handle_delete_sheet))
+        .route(
+            "/:username/create",
+            get(login::serve_create_sheet_form).post(login::handle_create_sheet),
+        )
+        .route("/:username/:sheet_name/status", post(change_sheet_status))
+        .route(
+            "/:username/:sheet_name/delete",
+            post(login::handle_delete_sheet),
+        )
         // only these get require_auth
         .layer(middleware::from_fn(login::require_auth));
 
@@ -282,17 +314,17 @@ async fn update_cell(
     if let Some((row, col)) = sheet.spreadsheet_parse_cell_name(&payload.cell) {
         let index = ((row - 1) * sheet.cols + (col - 1)) as usize;
         if let Some(cell) = &sheet.cells[index] {
-            println!(
-                "(DEBUG) Final state of cell {}: value = {}, formula = {:?}, error = {}",
-                payload.cell, cell.value, cell.formula, cell.error
-            );
+            // println!(
+            //     "(DEBUG) Final state of cell {}: value = {}, formula = {:?}, error = {}",
+            //     payload.cell, cell.value, cell.formula, cell.error
+            // );
             Json(CellResponse {
                 status,
                 value: Some(cell.value),
             })
             .into_response()
         } else {
-            println!("(DEBUG) Missing cell at index {}", index);
+            // println!("(DEBUG) Missing cell at index {}", index);
             Json(CellResponse {
                 status: "Cell not found".into(),
                 value: None,
@@ -300,10 +332,10 @@ async fn update_cell(
             .into_response()
         }
     } else {
-        println!(
-            "(DEBUG) Second parsing of cell identifier failed for '{}'",
-            payload.cell
-        );
+        // println!(
+        //     "(DEBUG) Second parsing of cell identifier failed for '{}'",
+        //     payload.cell
+        // );
         Json(CellResponse {
             status,
             value: None,
@@ -413,14 +445,9 @@ async fn save_spreadsheet_with_name(
 // Load user file by path
 async fn load_user_file(
     axum::extract::Path((username, filename)): axum::extract::Path<(String, String)>,
+    jar: CookieJar, // New parameter
     State(state): State<Arc<AppState>>,
-    current_user: axum::extract::Extension<String>,
 ) -> impl IntoResponse {
-    // Security check - users can only load their own files
-    if username != current_user.0 {
-        return Redirect::to("/login").into_response();
-    }
-
     let path = format!("database/{}/{}.bin.gz", username, filename);
 
     // Check if file exists
@@ -428,7 +455,35 @@ async fn load_user_file(
         return Html(format!("<h1>File not found</h1><p>Path: {}</p>", path)).into_response();
     }
 
-    // Load the file
+    // Try to validate the session directly from the cookie.
+    let current_user = jar
+        .get("session")
+        .and_then(|cookie| crate::login::validate_session(cookie.value()));
+
+    // If current user exists and matches the owner, then mark as owner.
+    let is_owner = current_user.as_deref() == Some(&username);
+
+    // If not owner, check if the sheet is public.
+    let mut is_public = false;
+    if !is_owner {
+        let list_path = format!("database/{}/list.json", username);
+        if let Ok(data) = std::fs::read_to_string(&list_path) {
+            if let Ok(entries) = serde_json::from_str::<Vec<crate::login::SheetEntry>>(&data) {
+                is_public = entries
+                    .iter()
+                    .any(|entry| entry.name == filename && entry.status == "public");
+                if !is_public {
+                    return Redirect::to("/login").into_response();
+                }
+            } else {
+                return Redirect::to("/login").into_response();
+            }
+        } else {
+            return Redirect::to("/login").into_response();
+        }
+    }
+
+    // Load the file as before
     match std::fs::read(&path) {
         Ok(file_data) => {
             match deserialize_from_memory(&file_data) {
@@ -436,13 +491,16 @@ async fn load_user_file(
                     {
                         let mut sheet_guard = state.sheet.lock().unwrap();
                         *sheet_guard = loaded_sheet;
-
-                        // Update original path
                         let mut path_guard = state.original_path.lock().unwrap();
                         *path_guard = Some(path);
-                    } // Release locks before calling serve_sheet
+                    }
+                    // If the sheet is public, record it.
+                    if is_public {
+                        let mut public_sheets = state.public_sheets.lock().unwrap();
+                        public_sheets.insert(format!("{}/{}", username, filename));
+                    }
 
-                    // Clone the Arc to avoid ownership issues:
+                    // Serve the sheet
                     serve_sheet(
                         Query(SheetQuery {
                             rows: None,
@@ -458,6 +516,74 @@ async fn load_user_file(
         }
         Err(_) => Html("<h1>Error reading file</h1>".to_string()).into_response(),
     }
+}
+
+async fn change_sheet_status(
+    axum::extract::Path((username, filename)): axum::extract::Path<(String, String)>,
+    current_user: axum::extract::Extension<String>,
+    Form(form): Form<ChangeStatusForm>,
+) -> impl IntoResponse {
+    // Security check - only owner can change status
+    if username != current_user.0 {
+        return (StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
+    }
+
+    // Ensure status is valid
+    if form.status != "public" && form.status != "private" {
+        return (StatusCode::BAD_REQUEST, "Invalid status").into_response();
+    }
+
+    // Update list.json
+    let list_path = format!("database/{}/list.json", username);
+    let mut entries = if std::path::Path::new(&list_path).exists() {
+        match std::fs::read_to_string(&list_path) {
+            Ok(data) => match serde_json::from_str::<Vec<SheetEntry>>(&data) {
+                Ok(entries) => entries,
+                Err(_) => Vec::new(),
+            },
+            Err(_) => Vec::new(),
+        }
+    } else {
+        Vec::new()
+    };
+
+    // Find and update the entry
+    let mut found = false;
+    for entry in &mut entries {
+        if entry.name == filename {
+            entry.status = form.status.clone();
+            found = true;
+            break;
+        }
+    }
+
+    // If not found, add a new entry
+    if !found {
+        entries.push(SheetEntry {
+            name: filename,
+            status: form.status,
+        });
+    }
+
+    // Save the updated list
+    if let Ok(json) = serde_json::to_string_pretty(&entries) {
+        if std::fs::write(&list_path, json).is_err() {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to update sheet status",
+            )
+                .into_response();
+        }
+    } else {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to serialize sheet data",
+        )
+            .into_response();
+    }
+
+    // Redirect back to the user's sheet list
+    Redirect::to(&format!("/{}", username)).into_response()
 }
 
 async fn export_spreadsheet(State(state): State<Arc<AppState>>) -> impl IntoResponse {

@@ -152,6 +152,18 @@
         .submit-btn:hover {
             background: #45a049;
         }
+        .status-btn {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        .status-btn:hover {
+            background: #0b7dda;
+        }
     </style>
 </head>
 <body>
@@ -213,6 +225,10 @@
                 <div class="file-item">
                     <a href="/${username}/${file.name}" class="file-link">${file.name}</a>
                     <span class="status-badge status-${file.status.toLowerCase()}">${file.status}</span>
+                    <form style="display:inline" method="post" action="/${username}/${file.name}/status">
+                        <input type="hidden" name="status" value="${file.status === 'public' ? 'private' : 'public'}">
+                        <button class="status-btn">${file.status === 'public' ? '🔒 Make Private' : '🔓 Make Public'}</button>
+                    </form>
                     <form style="display:inline" method="post" action="/${username}/${file.name}/delete">
                         <button class="delete-btn">🗑️ Delete</button>
                     </form>

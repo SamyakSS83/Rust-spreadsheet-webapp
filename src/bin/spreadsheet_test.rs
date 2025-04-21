@@ -526,7 +526,6 @@ mod spreadsheet_tests {
         // Test cycle detection
         assert!(sheet.first_step_find_cycle((1, 4), (1, 1), (2, 2), true));
 
-
         let mut sheet = Spreadsheet::spreadsheet_create(100, 100).unwrap();
         // In dependencies of A1, add B1 to B10 using for loop
         for i in 1..=10 {
@@ -535,8 +534,7 @@ mod spreadsheet_tests {
                 cell_dep_insert(cell_a1, i, 2);
             }
         }
-        assert!(sheet.first_step_find_cycle((1,1), (1,2), (0,0), false));
-
+        assert!(sheet.first_step_find_cycle((1, 1), (1, 2), (0, 0), false));
     }
 
     #[test]

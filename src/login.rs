@@ -1,5 +1,11 @@
 #![cfg(not(tarpaulin_include))]
 
+#[cfg(feature = "web")]
+use crate::mailer::{Mailer, generate_reset_code};
+#[cfg(feature = "web")]
+use crate::saving;
+#[cfg(feature = "web")]
+use crate::spreadsheet::Spreadsheet;
 use argon2::{
     Argon2,
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
@@ -7,11 +13,10 @@ use argon2::{
 #[cfg(feature = "web")]
 use axum::extract::FromRef;
 #[cfg(feature = "web")]
-use urlencoding;
-#[cfg(feature = "web")]
 use axum::{
-    Form, Json,
-    extract::{Query, State, Path as AxumPath},  // Rename to avoid conflict
+    Form,
+    Json,
+    extract::{Path as AxumPath, Query, State}, // Rename to avoid conflict
     http::{StatusCode, header},
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
@@ -23,16 +28,12 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::{self, File, create_dir_all};
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};  // Keep this import
+use std::path::{Path, PathBuf}; // Keep this import
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime};
+#[cfg(feature = "web")]
+use urlencoding;
 use uuid::Uuid;
-#[cfg(feature = "web")]
-use crate::saving;
-#[cfg(feature = "web")]
-use crate::spreadsheet::Spreadsheet;
-#[cfg(feature = "web")]
-use crate::mailer::{Mailer, generate_reset_code};
 
 // User data structures
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -85,6 +86,13 @@ pub struct UserFile {
     pub modified: SystemTime,
 }
 
+#[cfg(feature = "web")]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SheetEntry {
+    pub name: String,
+    pub status: String, // "public" or "private"
+}
+
 // Session management
 #[derive(Debug, Clone)]
 pub struct Session {
@@ -107,8 +115,6 @@ pub fn init_database() -> std::io::Result<()> {
     if !std::path::Path::new(DATABASE_DIR).exists() {
         create_dir_all(DATABASE_DIR)?;
     }
-
-
 
     // Create users.json if it doesn't exist
     let users_path = std::path::Path::new(USERS_FILE);
@@ -324,7 +330,11 @@ pub async fn handle_login(jar: CookieJar, Form(credentials): Form<UserCredential
 pub async fn handle_signup(
     Form(credentials): Form<UserCredentials>,
 ) -> Result<Redirect, (StatusCode, String)> {
-    match register_user(&credentials.username, &credentials.email, &credentials.password) {
+    match register_user(
+        &credentials.username,
+        &credentials.email,
+        &credentials.password,
+    ) {
         Ok(_) => Ok(Redirect::to("/login?registered=true")),
         Err(e) => Err((StatusCode::BAD_REQUEST, e)),
     }
@@ -342,24 +352,77 @@ pub async fn handle_logout(jar: CookieJar) -> (CookieJar, Redirect) {
 #[cfg(feature = "web")]
 pub async fn require_auth(
     jar: CookieJar,
-    mut request: axum::extract::Request, // Remove generic parameter B
-    next: axum::middleware::Next,        // Remove generic parameter B
+    mut request: axum::extract::Request,
+    next: axum::middleware::Next,
 ) -> Response {
-    // Check for session cookie
+    // eprintln!("DEBUG: require_auth called. Request URI: {:?}", request.uri());
+
+    // First, if a valid session exists, allow the request.
     if let Some(session_cookie) = jar.get("session") {
-        let session_id = session_cookie.value();
-
-        // Validate the session
-        if let Some(username) = validate_session(session_id) {
-            // Add username to request extensions
+        // eprintln!("DEBUG: Found session cookie: {:?}", session_cookie);
+        if let Some(username) = validate_session(session_cookie.value()) {
+            // eprintln!("DEBUG: Valid session for user: {}", username);
             request.extensions_mut().insert(username);
-
-            // Continue with the request
             return next.run(request).await;
+        } else {
+            // eprintln!("DEBUG: Session cookie invalid or expired.");
         }
+    } else {
+        // eprintln!("DEBUG: No session cookie found.");
     }
 
-    // No valid session found, redirect to login
+    // No valid session; if the call is for an API endpoint, check if the sheet is public.
+    let uri = request.uri().path();
+    // eprintln!("DEBUG: Processing URI: {}", uri);
+    if uri.starts_with("/api/") {
+        let parts: Vec<&str> = uri.split('/').filter(|s| !s.is_empty()).collect();
+        let (owner, sheet_name) = if parts.len() >= 3 {
+            (
+                parts[1].to_string(),
+                parts[2].trim_end_matches(".bin.gz").to_string(),
+            )
+        } else {
+            (String::new(), String::new())
+        };
+        // eprintln!("DEBUG: Parsed owner: '{}', sheet_name: '{}'", owner, sheet_name);
+
+        // NEW: If there's an authenticated user matching the owner, allow access.
+        if let Some(auth_user) = request.extensions().get::<String>() {
+            // eprintln!("DEBUG: Found authenticated user in extensions: {}", auth_user);
+            if *auth_user == owner {
+                // eprintln!("DEBUG: Authenticated user matches owner. Allowing access.");
+                return next.run(request).await;
+            }
+        } else {
+            // eprintln!("DEBUG: No authenticated user in extensions.");
+        }
+
+        if !owner.is_empty() && !sheet_name.is_empty() {
+            let list_path = format!("database/{}/list.json", owner);
+            // eprintln!("DEBUG: Checking public status from list at path: {}", list_path);
+            if let Ok(data) = std::fs::read_to_string(&list_path) {
+                // eprintln!("DEBUG: Read list.json: {}", data);
+                if let Ok(entries) = serde_json::from_str::<Vec<crate::login::SheetEntry>>(&data) {
+                    // eprintln!("DEBUG: Parsed {} entries", entries.len());
+                    let is_public = entries.iter().any(|entry| {
+                        let condition = entry.name == sheet_name && entry.status == "public";
+                        // eprintln!("DEBUG: Checking entry: {:?} -> {}", entry, condition);
+                        condition
+                    });
+                    // eprintln!("DEBUG: is_public: {}", is_public);
+                    if is_public {
+                        return next.run(request).await;
+                    }
+                } else {
+                    // eprintln!("DEBUG: Failed to parse list.json");
+                }
+            } else {
+                // eprintln!("DEBUG: Failed to read list.json from path: {}", list_path);
+            }
+        }
+    }
+    // eprintln!("DEBUG: Access denied. Redirecting to /login");
+    // Failing the above, redirect to login.
     Redirect::to("/login").into_response()
 }
 
@@ -384,14 +447,17 @@ pub async fn list_files(
 
                 // 3) Get the template and inject the data
                 let mut template = include_str!("./static/list.html").to_string();
-                
+
                 // Insert the sheets data as JavaScript
-                let sheets_json = serde_json::to_string(&entries)
-                    .unwrap_or_else(|_| "[]".to_string());
-                
+                let sheets_json =
+                    serde_json::to_string(&entries).unwrap_or_else(|_| "[]".to_string());
+
                 template = template.replace(
                     "</head>",
-                    &format!("    <script>const SHEETS_DATA = {};</script>\n</head>", sheets_json)
+                    &format!(
+                        "    <script>const SHEETS_DATA = {};</script>\n</head>",
+                        sheets_json
+                    ),
                 );
 
                 return Ok(Html(template));
@@ -399,13 +465,6 @@ pub async fn list_files(
         }
     }
     Err((StatusCode::UNAUTHORIZED, "Unauthorized"))
-}
-
-#[cfg(feature = "web")]
-#[derive(Debug, Serialize, Deserialize)]
-struct SheetEntry {
-    name: String,
-    status: String, // "public" or "private"
 }
 
 #[cfg(feature = "web")]
@@ -441,8 +500,7 @@ pub async fn handle_create_sheet(
     let path = user_dir.join(&filename);
     let sheet = Spreadsheet::spreadsheet_create(form.rows as i16, form.cols as i16)
         .expect("Failed to create spreadsheet");
-    saving::save_spreadsheet(&sheet, path.to_str().unwrap())
-        .expect("Failed to save spreadsheet");
+    saving::save_spreadsheet(&sheet, path.to_str().unwrap()).expect("Failed to save spreadsheet");
 
     // 3) Update list.json
     let list_path = user_dir.join("list.json");
@@ -452,7 +510,10 @@ pub async fn handle_create_sheet(
     } else {
         Vec::new()
     };
-    entries.push(SheetEntry { name: form.name, status: form.status });
+    entries.push(SheetEntry {
+        name: form.name,
+        status: form.status,
+    });
     fs::write(&list_path, serde_json::to_string_pretty(&entries).unwrap())
         .expect("Failed to write list.json");
 
@@ -496,7 +557,7 @@ pub async fn handle_delete_sheet(
 
 //     // Find user by email
 //     let user = users.values_mut().find(|u| u.email == reset_req.email);
-    
+
 //     if let Some(user) = user {
 //         let reset_code = generate_reset_code();
 //         let expires = SystemTime::now() + Duration::from_secs(3600); // 1 hour
@@ -541,7 +602,7 @@ pub async fn handle_forgot_password(
 
     // Find user by email
     let user = users.values_mut().find(|u| u.email == reset_req.email);
-    
+
     if let Some(user) = user {
         let reset_code = generate_reset_code();
         let expires = SystemTime::now() + Duration::from_secs(3600); // 1 hour
@@ -552,24 +613,30 @@ pub async fn handle_forgot_password(
 
         // Save updated users
         if save_users(&users).is_err() {
-            return Redirect::to("/forgot-password?error=Failed+to+generate+reset+code").into_response();
+            return Redirect::to("/forgot-password?error=Failed+to+generate+reset+code")
+                .into_response();
         }
 
         // Send email
         match Mailer::new() {
             Ok(mailer) => {
                 if let Err(_) = mailer.send_password_reset(&reset_req.email, &reset_code) {
-                    return Redirect::to("/forgot-password?error=Failed+to+send+email").into_response();
+                    return Redirect::to("/forgot-password?error=Failed+to+send+email")
+                        .into_response();
                 }
             }
             Err(_) => {
-                return Redirect::to("/forgot-password?error=Failed+to+initialize+mailer").into_response();
+                return Redirect::to("/forgot-password?error=Failed+to+initialize+mailer")
+                    .into_response();
             }
         }
 
         // Redirect to reset form with success message
-        Redirect::to(&format!("/reset-password?email_sent=true&email={}", 
-            urlencoding::encode(&reset_req.email))).into_response()
+        Redirect::to(&format!(
+            "/reset-password?email_sent=true&email={}",
+            urlencoding::encode(&reset_req.email)
+        ))
+        .into_response()
     } else {
         Redirect::to("/forgot-password?error=Email+not+found").into_response()
     }
@@ -594,11 +661,13 @@ pub async fn handle_reset_password(
         if let Some(stored_code) = &user.reset_code {
             if let Some(expires) = user.reset_code_expires {
                 if SystemTime::now() > expires {
-                    return Redirect::to("/reset-password?error=Reset+code+expired").into_response();
+                    return Redirect::to("/reset-password?error=Reset+code+expired")
+                        .into_response();
                 }
 
                 if stored_code != &reset_confirm.reset_code {
-                    return Redirect::to("/reset-password?error=Invalid+reset+code").into_response();
+                    return Redirect::to("/reset-password?error=Invalid+reset+code")
+                        .into_response();
                 }
 
                 // Update password
@@ -609,12 +678,16 @@ pub async fn handle_reset_password(
                         user.reset_code_expires = None;
 
                         if save_users(&users).is_err() {
-                            return Redirect::to("/reset-password?error=Failed+to+save+new+password").into_response();
+                            return Redirect::to(
+                                "/reset-password?error=Failed+to+save+new+password",
+                            )
+                            .into_response();
                         }
 
                         Redirect::to("/login?success=Password+reset+successful").into_response()
                     }
-                    Err(_) => Redirect::to("/reset-password?error=Failed+to+hash+password").into_response(),
+                    Err(_) => Redirect::to("/reset-password?error=Failed+to+hash+password")
+                        .into_response(),
                 }
             } else {
                 Redirect::to("/reset-password?error=Reset+code+expired").into_response()
@@ -694,7 +767,9 @@ pub async fn handle_change_password(
             // Verify old password and update to new password
             let mut users = match get_users() {
                 Ok(users) => users,
-                Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Server error").into_response(),
+                Err(_) => {
+                    return (StatusCode::INTERNAL_SERVER_ERROR, "Server error").into_response();
+                }
             };
 
             if let Some(user) = users.get_mut(&change_req.username) {
@@ -703,7 +778,8 @@ pub async fn handle_change_password(
                     Ok(true) => {
                         // Verify new passwords match
                         if change_req.new_password != change_req.confirm_password {
-                            return (StatusCode::BAD_REQUEST, "New passwords don't match").into_response();
+                            return (StatusCode::BAD_REQUEST, "New passwords don't match")
+                                .into_response();
                         }
 
                         // Update password
@@ -711,15 +787,26 @@ pub async fn handle_change_password(
                             Ok(hash) => {
                                 user.password_hash = hash;
                                 if save_users(&users).is_err() {
-                                    return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to save new password").into_response();
+                                    return (
+                                        StatusCode::INTERNAL_SERVER_ERROR,
+                                        "Failed to save new password",
+                                    )
+                                        .into_response();
                                 }
                                 (StatusCode::OK, "Password changed successfully").into_response()
                             }
-                            Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Failed to hash password").into_response(),
+                            Err(_) => {
+                                (StatusCode::INTERNAL_SERVER_ERROR, "Failed to hash password")
+                                    .into_response()
+                            }
                         }
                     }
                     Ok(false) => (StatusCode::BAD_REQUEST, "Invalid old password").into_response(),
-                    Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Password verification failed").into_response(),
+                    Err(_) => (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Password verification failed",
+                    )
+                        .into_response(),
                 }
             } else {
                 (StatusCode::NOT_FOUND, "User not found").into_response()
