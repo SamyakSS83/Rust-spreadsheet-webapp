@@ -1,3 +1,4 @@
+/// Module for spreadsheet functionality including cell management, formula evaluation and dependency tracking.
 use crate::cell::{Cell, cell_create};
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -5,45 +6,70 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
 lazy_static! {
+    /// Regular expression for matching function syntax, e.g., SUM(A1:B2)
     static ref FUNC_REGEX: Regex = Regex::new(r"^([A-Za-z]+)\((.*)\)$").unwrap();
+    /// Regular expression for matching arithmetic expressions, e.g., A1+B2 or 10-5
     static ref ARITH_EXPR_REGEX: Regex = Regex::new(
         r"^(([+-]?[0-9]+)|([A-Za-z]+[0-9]+))([+\-*/])(([+-]?[0-9]+)|([A-Za-z]+[0-9]+))$"
     )
     .unwrap();
 }
 
+/// Represents a spreadsheet with cells, dimensions, and view settings.
+///
+/// The spreadsheet tracks cell values, formulas, and dependencies between cells.
+/// It also maintains an undo stack for operation history.
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Spreadsheet {
+    /// Number of rows in the spreadsheet
     pub rows: i16,
+    /// Number of columns in the spreadsheet
     pub cols: i16,
+    /// Current top row of the view (for scrolling)
     pub view_row: i16,
+    /// Current leftmost column of the view (for scrolling)
     pub view_col: i16,
+    /// Matrix of cells stored as a flat vector
     pub cells: Vec<Option<Box<Cell>>>,
+    /// Stack of previous cell states for undo functionality
     pub undo_stack: Vec<(ParsedRHS, i16, i16)>,
 }
 
+/// Represents the parsed right-hand side of a cell formula.
+///
+/// This enum captures the various types of expressions that can be used
+/// in a spreadsheet cell, such as functions, arithmetic operations, or simple values.
 #[derive(Debug, serde::Deserialize, serde::Serialize, Clone, PartialEq)]
 pub enum ParsedRHS {
+    /// A function with a name and arguments
     Function {
         name: FunctionName,
         args: (Operand, Operand),
     },
+    /// A sleep operation with a duration
     Sleep(Operand),
+    /// An arithmetic operation with left-hand side, operator, and right-hand side
     Arithmetic {
         lhs: Operand,
         operator: char,
         rhs: Operand,
     },
+    /// A single value (number or cell reference)
     SingleValue(Operand),
+    /// No operation
     None,
 }
 
+/// Represents an operand in a formula, which can be a number or a cell reference.
 #[derive(Clone, serde::Serialize, serde::Deserialize, Debug, PartialEq)]
 pub enum Operand {
+    /// A numeric value
     Number(i32),
+    /// A cell reference with row and column
     Cell(i16, i16),
 }
 
+/// Represents the name of a function that can be used in a formula.
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 pub enum FunctionName {
     Min,
@@ -56,6 +82,7 @@ pub enum FunctionName {
 }
 
 impl FunctionName {
+    /// Converts a string to a FunctionName enum variant.
     pub fn from_strng(name: &str) -> Option<Self> {
         match name.to_uppercase().as_str() {
             "MIN" => Some(FunctionName::Min),
@@ -67,12 +94,32 @@ impl FunctionName {
             _ => None,
         }
     }
+    /// Checks if the function is a copy operation.
     pub fn is_copy(&self) -> bool {
         matches!(self, FunctionName::Copy)
     }
 }
 
 impl Spreadsheet {
+    /// Creates a new spreadsheet with the specified number of rows and columns.
+    ///
+    /// This function initializes a new spreadsheet with the given dimensions and creates
+    /// all cells within the specified range. Each cell is created with default values.
+    ///
+    /// # Arguments
+    /// * `rows` - Number of rows in the spreadsheet
+    /// * `cols` - Number of columns in the spreadsheet
+    ///
+    /// # Returns
+    /// * `Some(Box<Self>)` - A boxed Spreadsheet instance if creation was successful
+    /// * `None` - If creation failed (should not occur under normal circumstances)
+    ///
+    /// # Example
+    /// ```
+    /// let sheet = Spreadsheet::spreadsheet_create(10, 10).unwrap();
+    /// assert_eq!(sheet.rows, 10);
+    /// assert_eq!(sheet.cols, 10);
+    /// ```
     pub fn spreadsheet_create(rows: i16, cols: i16) -> Option<Box<Self>> {
         let mut sheet = Box::new(Spreadsheet {
             rows,
@@ -97,6 +144,23 @@ impl Spreadsheet {
         Some(sheet)
     }
 
+    /// Converts a column number to its corresponding letter representation.
+    ///
+    /// This function converts a 1-based column index to an Excel-style column name.
+    /// For example, 1 becomes "A", 2 becomes "B", 27 becomes "AA", etc.
+    ///
+    /// # Arguments
+    /// * `col` - The column number (1-based)
+    ///
+    /// # Returns
+    /// A string representing the column letter(s)
+    ///
+    /// # Example
+    /// ```
+    /// assert_eq!(Spreadsheet::col_to_letter(1), "A");
+    /// assert_eq!(Spreadsheet::col_to_letter(26), "Z");
+    /// assert_eq!(Spreadsheet::col_to_letter(27), "AA");
+    /// ```
     pub fn col_to_letter(col: i16) -> String {
         let mut col = col;
         let mut result = String::new();
@@ -108,16 +172,70 @@ impl Spreadsheet {
         result.chars().rev().collect()
     }
 
+    /// Converts a column letter representation to its corresponding number.
+    ///
+    /// This function converts an Excel-style column name to a 1-based column index.
+    /// For example, "A" becomes 1, "B" becomes 2, "AA" becomes 27, etc.
+    ///
+    /// # Arguments
+    /// * `letters` - The string containing the column letters
+    ///
+    /// # Returns
+    /// The column number (1-based)
+    ///
+    /// # Example
+    /// ```
+    /// assert_eq!(Spreadsheet::letter_to_col("A"), 1);
+    /// assert_eq!(Spreadsheet::letter_to_col("Z"), 26);
+    /// assert_eq!(Spreadsheet::letter_to_col("AA"), 27);
+    /// ```
     pub fn letter_to_col(letters: &str) -> i16 {
         letters
             .chars()
             .fold(0, |acc, c| acc * 26 + (c as i16 - 'A' as i16 + 1))
     }
 
+    /// Returns the cell name for the given row and column.
+    ///
+    /// This function formats a row and column into a standard spreadsheet cell reference
+    /// (e.g., "A1", "B2", "AA10").
+    ///
+    /// # Arguments
+    /// * `row` - The row number (1-based)
+    /// * `col` - The column number (1-based)
+    ///
+    /// # Returns
+    /// A string containing the formatted cell name
+    ///
+    /// # Example
+    /// ```
+    /// assert_eq!(Spreadsheet::get_cell_name(1, 1), "A1");
+    /// assert_eq!(Spreadsheet::get_cell_name(10, 2), "B10");
+    /// ```
     pub fn get_cell_name(row: i16, col: i16) -> String {
         format!("{}{}", Self::col_to_letter(col), row)
     }
 
+    /// Parses a cell name and returns its row and column.
+    ///
+    /// This function takes a cell reference (e.g., "A1", "B10") and converts it to
+    /// row and column indices. It also validates that the referenced cell exists within
+    /// the spreadsheet's dimensions.
+    ///
+    /// # Arguments
+    /// * `cell_name` - The cell reference (e.g., "A1", "B10")
+    ///
+    /// # Returns
+    /// * `Some((row, col))` - The row and column indices if the cell name is valid
+    /// * `None` - If the cell name is invalid or refers to a cell outside the spreadsheet
+    ///
+    /// # Example
+    /// ```
+    /// let sheet = Spreadsheet::spreadsheet_create(10, 10).unwrap();
+    /// assert_eq!(sheet.spreadsheet_parse_cell_name("A1"), Some((1, 1)));
+    /// assert_eq!(sheet.spreadsheet_parse_cell_name("B10"), Some((10, 2)));
+    /// assert_eq!(sheet.spreadsheet_parse_cell_name("K11"), None); // Outside dimensions
+    /// ```
     pub fn spreadsheet_parse_cell_name(&self, cell_name: &str) -> Option<(i16, i16)> {
         let mut letters = String::new();
         let mut digits = String::new();
@@ -150,10 +268,52 @@ impl Spreadsheet {
         Some((row, col))
     }
 
+    /// Checks if a string is numeric.
+    ///
+    /// This utility function checks if a string contains only numeric digits.
+    /// It returns false for empty strings or strings with non-digit characters.
+    ///
+    /// # Arguments
+    /// * `s` - The string to check
+    ///
+    /// # Returns
+    /// `true` if the string contains only digits, `false` otherwise
+    ///
+    /// # Example
+    /// ```
+    /// assert!(Spreadsheet::is_numeric("123"));
+    /// assert!(!Spreadsheet::is_numeric("12a"));
+    /// assert!(!Spreadsheet::is_numeric(""));
+    /// ```
     pub fn is_numeric(s: &str) -> bool {
         !s.is_empty() && s.chars().all(|c| c.is_ascii_digit())
     }
 
+    /// Evaluates a parsed right-hand side expression and returns its value and error status.
+    ///
+    /// This complex function evaluates different types of expressions:
+    /// - Functions like SUM, MIN, MAX, AVG, STDEV
+    /// - Sleep operations
+    /// - Arithmetic expressions
+    /// - Single value references
+    ///
+    /// It handles cell references, numeric values, and produces appropriate error states.
+    ///
+    /// # Arguments
+    /// * `expr` - The parsed expression to evaluate
+    /// * `_row` - Row of the cell containing the expression (for context)
+    /// * `_col` - Column of the cell containing the expression (for context)
+    ///
+    /// # Returns
+    /// A tuple containing:
+    /// * The calculated value
+    /// * Whether an error occurred during evaluation
+    ///
+    /// # Error Handling
+    /// Returns an error state (second tuple element = true) for:
+    /// - Division by zero
+    /// - References to cells in error state
+    /// - Invalid operations
     pub fn spreadsheet_evaluate_expression(
         &self,
         expr: &ParsedRHS,
@@ -314,6 +474,21 @@ impl Spreadsheet {
         }
     }
 
+    /// Recursively finds cycles in the dependency graph using a stack.
+    ///
+    /// This function implements cycle detection in the cell dependency graph to prevent
+    /// circular references. It uses a stack-based approach rather than recursion for
+    /// better performance with deep dependency chains.
+    ///
+    /// # Arguments
+    /// * `(r1, r2)` - Row range to check
+    /// * `(c1, c2)` - Column range to check
+    /// * `range_bool` - Whether checking a range (true) or specific cells (false)
+    /// * `visited` - Set of already visited cells to prevent re-processing
+    /// * `stack` - Stack of cells to process
+    ///
+    /// # Returns
+    /// `true` if a cycle is detected, `false` otherwise
     pub fn rec_find_cycle_using_stack<'a>(
         &'a self,
         (r1, r2): (i16, i16),
@@ -355,6 +530,16 @@ impl Spreadsheet {
         false
     }
 
+    /// Returns the names of cells that depend on the given cell.
+    ///
+    /// This function extracts the list of dependent cells from a cell's dependency tracker,
+    /// handling the different internal representations (Vector, Set, None) transparently.
+    ///
+    /// # Arguments
+    /// * `cell` - The cell to get dependents for
+    ///
+    /// # Returns
+    /// A vector of (row, column) pairs representing the cells that depend on the given cell
     pub fn get_dependent_names(&self, cell: &Cell) -> Vec<(i16, i16)> {
         match &cell.dependents {
             crate::cell::Dependents::Vector(vec) => vec.clone(),
@@ -363,6 +548,20 @@ impl Spreadsheet {
         }
     }
 
+    /// Initiates the cycle detection process for a given cell and range.
+    ///
+    /// This function sets up the cycle detection by creating initial state and delegating
+    /// to the stack-based cycle detection algorithm. It's used to check if adding a
+    /// dependency would create a circular reference.
+    ///
+    /// # Arguments
+    /// * `(r_, c_)` - The cell initiating the dependency
+    /// * `(r1, c1)` - Start of range or first specific cell
+    /// * `(r2, c2)` - End of range or second specific cell
+    /// * `range_bool` - Whether checking a range (true) or specific cells (false)
+    ///
+    /// # Returns
+    /// `true` if a cycle would be created, `false` otherwise
     pub fn first_step_find_cycle(
         &self,
         (r_, c_): (i16, i16),
@@ -380,6 +579,15 @@ impl Spreadsheet {
         self.rec_find_cycle_using_stack((r1, r2), (c1, c2), range_bool, &mut visited, &mut stack)
     }
 
+    /// Removes old dependencies for a cell.
+    ///
+    /// This function cleans up existing dependencies before assigning a new formula to a cell.
+    /// It examines the cell's current formula and removes the cell from the dependents lists
+    /// of all cells it currently depends on.
+    ///
+    /// # Arguments
+    /// * `r` - Row of the cell having dependencies removed
+    /// * `c` - Column of the cell having dependencies removed
     pub fn remove_old_dependents(&mut self, r: i16, c: i16) {
         let formula = {
             let index = (r - 1) as usize * self.cols as usize + (c - 1) as usize;
@@ -449,6 +657,20 @@ impl Spreadsheet {
         }
     }
 
+    /// Updates the dependencies for a cell.
+    ///
+    /// This function establishes new dependencies after a cell's formula changes.
+    /// It first removes old dependencies, then adds the cell as a dependent to all
+    /// cells it now depends on based on its new formula.
+    ///
+    /// # Arguments
+    /// * `(r, c)` - The cell being updated
+    /// * `(start_row, start_col)` - Start of range or first specific cell
+    /// * `(end_row, end_col)` - End of range or second specific cell
+    /// * `is_range` - Whether dealing with a range (true) or specific cells (false)
+    ///
+    /// # Returns
+    /// Always returns 0 (legacy return value maintained for compatibility)
     pub fn update_dependencies(
         &mut self,
         (r, c): (i16, i16),
@@ -484,6 +706,17 @@ impl Spreadsheet {
         0
     }
 
+    /// Performs a topological sort on the dependency graph starting from a given cell.
+    ///
+    /// This function sorts cells in dependency order, ensuring that cells are evaluated
+    /// only after all their dependencies have been evaluated. This is crucial for
+    /// correctly propagating value changes through the dependency chain.
+    ///
+    /// # Arguments
+    /// * `starting` - The cell to start the topological sort from
+    ///
+    /// # Returns
+    /// A boxed vector of (row, column) pairs in topological order
     pub fn topo_sort(&self, starting: &Cell) -> Box<Vec<(i16, i16)>> {
         let mut sorted_nodes = Box::new(Vec::new());
         let mut stack = Box::new(Vec::new());
@@ -525,6 +758,27 @@ impl Spreadsheet {
         sorted_nodes
     }
 
+    /// Sets the value of a cell and updates dependencies and dependent cells.
+    ///
+    /// This is the main function for updating a cell's formula. It:
+    /// 1. Handles special cases like COPY function
+    /// 2. Checks for circular references
+    /// 3. Updates dependencies
+    /// 4. Evaluates the new formula
+    /// 5. Propagates changes to dependent cells
+    /// 6. Updates the undo stack
+    ///
+    /// # Arguments
+    /// * `row` - Row of the cell to update
+    /// * `col` - Column of the cell to update
+    /// * `rhs` - The new formula for the cell
+    /// * `status_out` - Output parameter for operation status message
+    ///
+    /// # Side Effects
+    /// - Updates the cell's value and error state
+    /// - Updates dependent cells' values
+    /// - Adds to the undo stack
+    /// - Modifies `status_out` to indicate success or failure
     pub fn spreadsheet_set_cell_value(
         &mut self,
         row: i16,
@@ -647,6 +901,19 @@ impl Spreadsheet {
         *status_out = "ok".to_string();
     }
 
+    /// Undoes the last operation by restoring the previous cell states.
+    ///
+    /// This function reverts the spreadsheet to its previous state by popping operations
+    /// from the undo stack and applying them in reverse. It handles the entire undo operation
+    /// as a single atomic action.
+    ///
+    /// # Arguments
+    /// * `status_out` - Output parameter for operation status message
+    ///
+    /// # Side Effects
+    /// - Modifies multiple cells back to their previous states
+    /// - Clears the current undo stack
+    /// - Rebuilds dependencies based on the restored formulas
     pub fn spreadsheet_undo(&mut self, status_out: &mut String) {
         let mut undo_stack = self.undo_stack.clone();
         self.undo_stack.clear();
@@ -657,6 +924,17 @@ impl Spreadsheet {
         }
     }
 
+    /// Displays the current state of the spreadsheet.
+    ///
+    /// This function prints a formatted view of the spreadsheet to the console,
+    /// showing a window of cells based on the current view_row and view_col settings.
+    /// It displays at most 10 rows and 10 columns at a time.
+    ///
+    /// # Format
+    /// - Column headers are shown as letters (A, B, C, ...)
+    /// - Row headers are shown as numbers (1, 2, 3, ...)
+    /// - Cell values are displayed in the grid
+    /// - Cells with errors show "ERR" instead of their value
     pub fn spreadsheet_display(&self) {
         let end_row = if self.view_row + 10 < self.rows {
             self.view_row + 10
@@ -693,6 +971,31 @@ impl Spreadsheet {
         }
     }
 
+    /// Checks if a command is valid and returns the parsed result.
+    ///
+    /// This function parses and validates a cell update command, such as "A1=B1+C1" or
+    /// "D5=SUM(A1:A10)". It ensures the cell reference is valid and the formula can be parsed.
+    ///
+    /// # Arguments
+    /// * `cell_name` - The name of the cell to update (e.g., "A1")
+    /// * `formula` - The formula to assign to the cell
+    ///
+    /// # Returns
+    /// A tuple containing:
+    /// * Whether the command is valid
+    /// * The row of the target cell
+    /// * The column of the target cell
+    /// * The parsed formula
+    ///
+    /// # Example
+    /// ```
+    /// let sheet = Spreadsheet::spreadsheet_create(10, 10).unwrap();
+    /// let (valid, row, col, formula) = sheet.is_valid_command("A1", "10");
+    /// assert!(valid);
+    /// assert_eq!(row, 1);
+    /// assert_eq!(col, 1);
+    /// // formula will be ParsedRHS::SingleValue(Operand::Number(10))
+    /// ```
     pub fn is_valid_command(&self, cell_name: &str, formula: &str) -> (bool, i16, i16, ParsedRHS) {
         let mut ret = (false, 0, 0, ParsedRHS::None);
         if cell_name.is_empty() || formula.is_empty() {
@@ -803,6 +1106,26 @@ impl Spreadsheet {
             ret
         }
     }
+
+    /// Checks if an arithmetic expression is valid and returns the parsed result.
+    ///
+    /// This function parses expressions like "A1+B2", "10-5", "C3*D4", or "E5/F6".
+    /// It validates the operands and operator, and constructs a ParsedRHS if valid.
+    ///
+    /// # Arguments
+    /// * `expr` - The arithmetic expression to parse
+    ///
+    /// # Returns
+    /// A tuple containing:
+    /// * Whether the expression is valid
+    /// * The parsed expression as a ParsedRHS
+    ///
+    /// # Recognized Formats
+    /// - Cell reference + Cell reference: "A1+B2"
+    /// - Cell reference + Number: "A1+10"
+    /// - Number + Cell reference: "10+A1"
+    /// - Number + Number: "10+20"
+    /// - Operators: +, -, *, /
     pub fn is_valid_arithmetic_expression(&self, expr: &str) -> (bool, ParsedRHS) {
         let mut ret = (false, ParsedRHS::None);
         if let Some(captures) = ARITH_EXPR_REGEX.captures(expr) {
