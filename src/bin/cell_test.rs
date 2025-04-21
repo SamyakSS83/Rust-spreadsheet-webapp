@@ -63,6 +63,22 @@ mod cell_tests {
         assert!(cell_contains(&cell, 3, 2));
         assert!(cell_contains(&cell, 4, 3));
         assert!(!cell_contains(&cell, 5, 4)); // E4 not added
+
+        // Add more dependents such that it becomes set
+        for i in 5..=10 {
+            cell_dep_insert(&mut cell, i, i);
+        }
+
+        // Check that Set was created by verifying format
+        match &cell.dependents {
+            Dependents::Vector(_) => panic!("Should have converted to Set"),
+            Dependents::Set(_) => assert!(true), // This is expected
+            Dependents::None => panic!("Should not be None"),
+        }
+        // Ensure all dependencies are still accessible
+        for i in 5..=10 {
+            assert!(cell_contains(&cell, i, i));
+        }
     }
 
     #[test]
@@ -77,6 +93,33 @@ mod cell_tests {
         cell_dep_remove(&mut cell, 3, 2);
         assert!(!cell_contains(&cell, 3, 2));
         assert!(cell_contains(&cell, 2, 1)); // B1 should still be there
+
+        // Add more cells , such that it converts to set
+        for i in 4..=11 {
+            cell_dep_insert(&mut cell, i, i);
+        }
+
+        // Check that Set was created by verifying format
+        match &cell.dependents {
+            Dependents::Vector(_) => panic!("Should have converted to Set"),
+            Dependents::Set(_) => assert!(true), // This is expected
+            Dependents::None => panic!("Should not be None"),
+        }
+
+        // remove some dependents
+        cell_dep_remove(&mut cell, 4, 4);
+        cell_dep_remove(&mut cell, 5, 5);
+        cell_dep_remove(&mut cell, 6, 6);
+
+        // check 
+        assert!(!cell_contains(&cell, 4, 4));
+        assert!(!cell_contains(&cell, 5, 5));
+        assert!(!cell_contains(&cell, 6, 6));
+        assert!(cell_contains(&cell, 7, 7));
+        assert!(cell_contains(&cell, 8, 8));
+        assert!(cell_contains(&cell, 9, 9));
+        assert!(cell_contains(&cell, 10, 10));
+        assert!(cell_contains(&cell, 11, 11));
     }
 
     #[test]
@@ -105,8 +148,8 @@ mod cell_tests {
     fn test_dependent_conversion() {
         let mut cell = cell_create(1, 1);
 
-        // Add 8 dependencies to trigger conversion from Vector to Set
-        for i in 1..=8 {
+        // Add 9 dependencies to trigger conversion from Vector to Set
+        for i in 1..=9 {
             cell_dep_insert(&mut cell, i, i);
         }
 
@@ -118,13 +161,13 @@ mod cell_tests {
         }
 
         // Ensure all dependencies are still accessible
-        for i in 1..=8 {
+        for i in 1..=9 {
             assert!(cell_contains(&cell, i, i));
         }
 
         // Add one more and check it works
-        cell_dep_insert(&mut cell, 9, 9);
-        assert!(cell_contains(&cell, 9, 9));
+        cell_dep_insert(&mut cell, 10, 10);
+        assert!(cell_contains(&cell, 10, 10));
 
         // Remove one and check it works
         cell_dep_remove(&mut cell, 5, 5);
