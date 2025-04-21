@@ -7,7 +7,7 @@ use axum::extract::FromRef;
 #[cfg(feature = "web")]
 use axum::{
     Form, Json,
-    extract::{Query, State, Path},
+    extract::{Query, State, Path as AxumPath},  // Rename to avoid conflict
     http::{StatusCode, header},
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
@@ -19,12 +19,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::{self, File, create_dir_all};
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Path, PathBuf};  // Keep this import
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime};
 use uuid::Uuid;
-#[cfg(feature = "web")]
-use std::{fs, fs::create_dir_all, path::PathBuf};
 #[cfg(feature = "web")]
 use crate::saving;
 #[cfg(feature = "web")]
@@ -327,7 +325,7 @@ pub async fn require_auth(
 #[cfg(feature = "web")]
 pub async fn list_files(
     jar: CookieJar,
-    Path(username): Path<String>,
+    AxumPath(username): AxumPath<String>,
 ) -> Result<Html<String>, (StatusCode, &'static str)> {
     // 1) auth check
     if let Some(cookie) = jar.get("session") {
@@ -343,32 +341,19 @@ pub async fn list_files(
                     Vec::new()
                 };
 
-                // 3) render HTML
-                let mut html = format!(
-                    "<!DOCTYPE html>
-                    <html><head><title>{0}’s Sheets</title></head><body>
-                    <h1>{0}’s Spreadsheets</h1>
-                    <a href=\"/{0}/create\">📄 Create New Spreadsheet</a>
-                    <div class=\"file-list\">",
-                    username
+                // 3) Get the template and inject the data
+                let mut template = include_str!("./static/list.html").to_string();
+                
+                // Insert the sheets data as JavaScript
+                let sheets_json = serde_json::to_string(&entries)
+                    .unwrap_or_else(|_| "[]".to_string());
+                
+                template = template.replace(
+                    "</head>",
+                    &format!("    <script>const SHEETS_DATA = {};</script>\n</head>", sheets_json)
                 );
 
-                for e in entries {
-                    html.push_str(&format!(
-                        "<div>
-                            <a href=\"/{u}/{n}\">{n}</a> — {s}
-                            <form style=\"display:inline\" method=\"post\" action=\"/{u}/{n}/delete\">
-                              <button>🗑️ Delete</button>
-                            </form>
-                          </div>",
-                        u = username,
-                        n = e.name,
-                        s = e.status,
-                    ));
-                }
-
-                html.push_str("</div></body></html>");
-                return Ok(Html(html));
+                return Ok(Html(template));
             }
         }
     }
@@ -389,4 +374,70 @@ pub struct CreateSheetForm {
     pub rows: u16,
     pub cols: u16,
     pub status: String,
+}
+
+#[cfg(feature = "web")]
+pub async fn serve_create_sheet_form(
+    jar: CookieJar,
+    AxumPath(username): AxumPath<String>,
+) -> Result<Redirect, (StatusCode, &'static str)> {
+    // Redirect back to the list page - the form is now in the modal
+    Ok(Redirect::to(&format!("/{}", username)))
+}
+
+#[cfg(feature = "web")]
+pub async fn handle_create_sheet(
+    jar: CookieJar,
+    AxumPath(username): AxumPath<String>,
+    Form(form): Form<CreateSheetForm>,
+) -> Redirect {
+    // 1) Create the directory if it doesn't exist
+    let user_dir = PathBuf::from(DATABASE_DIR).join(&username);
+    let _ = create_dir_all(&user_dir);
+
+    // 2) Create and save the spreadsheet
+    let filename = format!("{}.bin.gz", form.name);
+    let path = user_dir.join(&filename);
+    let sheet = Spreadsheet::spreadsheet_create(form.rows as i16, form.cols as i16)
+        .expect("Failed to create spreadsheet");
+    saving::save_spreadsheet(&sheet, path.to_str().unwrap())
+        .expect("Failed to save spreadsheet");
+
+    // 3) Update list.json
+    let list_path = user_dir.join("list.json");
+    let mut entries: Vec<SheetEntry> = if list_path.exists() {
+        let data = fs::read_to_string(&list_path).unwrap_or_default();
+        serde_json::from_str(&data).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    entries.push(SheetEntry { name: form.name, status: form.status });
+    fs::write(&list_path, serde_json::to_string_pretty(&entries).unwrap())
+        .expect("Failed to write list.json");
+
+    Redirect::to(&format!("/{}", username))
+}
+
+#[cfg(feature = "web")]
+pub async fn handle_delete_sheet(
+    jar: CookieJar,
+    AxumPath((username, sheet_name)): AxumPath<(String, String)>,
+) -> Redirect {
+    // 1) Delete the spreadsheet file
+    let user_dir = PathBuf::from(DATABASE_DIR).join(&username);
+    let file_path = user_dir.join(format!("{}.bin.gz", sheet_name));
+    let _ = fs::remove_file(&file_path);
+
+    // 2) Update list.json
+    let list_path = user_dir.join("list.json");
+    if list_path.exists() {
+        if let Ok(data) = fs::read_to_string(&list_path) {
+            if let Ok(mut entries) = serde_json::from_str::<Vec<SheetEntry>>(&data) {
+                entries.retain(|entry| entry.name != sheet_name);
+                let _ = fs::write(&list_path, serde_json::to_string_pretty(&entries).unwrap());
+            }
+        }
+    }
+
+    Redirect::to(&format!("/{}", username))
 }
