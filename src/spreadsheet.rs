@@ -811,12 +811,6 @@ impl Spreadsheet {
                     let dest_index = ((r as isize + row_offset - 1) * self.cols as isize
                         + (c as isize + col_offset - 1))
                         as usize;
-                    println!(
-                        "start row {} col {} : {:?} ",
-                        r,
-                        c,
-                        self.cells[dest_index].as_ref().unwrap().dependents
-                    );
                     if dest_index < self.cells.len() {
                         if let Some(dest_cell) =
                             self.cells.get_mut(dest_index).and_then(|opt| opt.as_mut())
@@ -1001,7 +995,6 @@ impl Spreadsheet {
     }
 
     pub fn spreadsheet_undo(&mut self, status_out: &mut String) {
-        println!("undo stack size {}", self.undo_stack.len());
         // iterate through undo_stack extract cell name --> update dependencies --> set value
         let mut undo_stack = self.undo_stack.clone();
         self.undo_stack.clear();

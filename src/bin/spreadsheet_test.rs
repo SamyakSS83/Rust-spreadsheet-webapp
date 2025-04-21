@@ -8,6 +8,7 @@ use std::time::Instant;
 
 mod spreadsheet_tests {
     use cop::cell;
+    use serde_json::Number;
 
     use super::*;
 
@@ -581,7 +582,6 @@ mod spreadsheet_tests {
         // Check that old dependencies were removed
         if let Some(cell_b1) = sheet.cells[b1_idx].as_ref() {
             let deps = sheet.get_dependent_names(cell_b1);
-            println!("B1 dependencies: {:?}", deps);
             assert!(!deps.contains(&(1, 1)));
         }
 
@@ -868,7 +868,6 @@ mod spreadsheet_tests {
             let sorted = sheet.topo_sort(cell_a1);
 
             // Check that the order is correct (should be C1, B1, A1)
-            println!("Sorted order: {:?}", sorted);
             assert_eq!(sorted.len(), 3);
             assert_eq!(sorted[0], (1, 1)); // C1
             assert_eq!(sorted[1], (1, 2)); // B1
@@ -1062,6 +1061,99 @@ mod spreadsheet_tests {
             assert_eq!(cell.value, 2); // Sleep function should return cell value
             assert!(!cell.error);
         }
+
+        //Test for Copy type formula 
+        let copy_expr = ParsedRHS::Function { name: FunctionName::Copy, args: (Operand::Cell(1,1),Operand::Cell(8,1)) };
+        sheet.spreadsheet_set_cell_value(1, 2, copy_expr, &mut status);
+        // B1 should have value of A1 . B2 should have value of A2 . B3 should have value of A3...and so on. and formula of them should be None
+        assert_eq!(status, "ok");
+        let b1_idx = 0 * 10 + 1;
+        if let Some(cell) = sheet.cells[b1_idx].as_ref() {
+            assert_eq!(cell.value, 42); // B1 should have value of A1
+            assert_eq!(cell.formula,ParsedRHS::SingleValue(Operand::Number(42)));
+        }
+        let b2_idx = 1 * 10 + 1;
+        if let Some(cell) = sheet.cells[b2_idx].as_ref() {
+            assert_eq!(cell.value, 42); // B2 should have value of A2
+            assert_eq!(cell.formula,ParsedRHS::SingleValue(Operand::Number(42)));
+        }
+        let b3_idx = 2 * 10 + 1;
+        if let Some(cell) = sheet.cells[b3_idx].as_ref() {
+            assert_eq!(cell.value, 100); // B3 should have value of A3
+            assert_eq!(cell.formula,ParsedRHS::SingleValue(Operand::Number(100)));
+        }
+        let b4_idx = 3 * 10 + 1;
+        if let Some(cell) = sheet.cells[b4_idx].as_ref() {
+            assert_eq!(cell.value, 42); // B4 should have value of A4
+            assert_eq!(cell.formula,ParsedRHS::SingleValue(Operand::Number(42)));
+        }
+        let b5_idx = 4 * 10 + 1;
+        if let Some(cell) = sheet.cells[b5_idx].as_ref() {
+            assert_eq!(cell.value, 42); // B5 should have value of A5
+            assert_eq!(cell.formula,ParsedRHS::SingleValue(Operand::Number(42)));
+        }
+        let b6_idx = 5 * 10 + 1;
+        if let Some(cell) = sheet.cells[b6_idx].as_ref() {
+            assert_eq!(cell.value, 0); // B6 should have value of A6
+            assert_eq!(cell.formula,ParsedRHS::SingleValue(Operand::Number(0)));
+        }
+        let b7_idx = 6 * 10 + 1;
+        if let Some(cell) = sheet.cells[b7_idx].as_ref() {
+            assert_eq!(cell.value, 84); // B7 should have value of A7
+            assert_eq!(cell.formula,ParsedRHS::SingleValue(Operand::Number(84)));
+        }
+        let b8_idx = 7 * 10 + 1;
+        if let Some(cell) = sheet.cells[b8_idx].as_ref() {
+            assert_eq!(cell.value, 2); // B8 should have value of A8
+            assert_eq!(cell.formula,ParsedRHS::SingleValue(Operand::Number(2)));
+        }
+        
+        
+    }
+    
+    #[test]
+    fn test_undo_function(){
+        let mut sheet = Spreadsheet::spreadsheet_create(10, 10).unwrap();
+        let mut status = String::new();
+
+        // Test setting a simple value
+        let val_expr = ParsedRHS::SingleValue(Operand::Number(42));
+        sheet.spreadsheet_set_cell_value(1, 1, val_expr, &mut status);
+        assert_eq!(status, "ok");
+
+        // Test undo
+        sheet.spreadsheet_undo(&mut status);
+        assert_eq!(sheet.cells[0].as_ref().unwrap().value, 0); // Cell should be reset to 0
+
+        sheet.spreadsheet_undo(&mut status);
+        // should go back to 42
+        assert_eq!(sheet.cells[0].as_ref().unwrap().value, 42); // Cell should be reset to 42
+
+        let val_expr = ParsedRHS::SingleValue(Operand::Number(100));
+        sheet.spreadsheet_set_cell_value(1, 1, val_expr, &mut status);
+
+        assert_eq!(sheet.cells[0].as_ref().unwrap().value, 100); // Cell should be set to 100
+
+        let val_expr = ParsedRHS::SingleValue(Operand::Number(200));
+        sheet.spreadsheet_set_cell_value(2, 1, val_expr, &mut status);
+
+        assert_eq!(sheet.cells[10].as_ref().unwrap().value, 200); // Cell should be set to 200
+
+        let avg_expr = ParsedRHS::Function {
+            name: FunctionName::Avg,
+            args: (
+                Operand::Cell(1, 1), // A1
+                Operand::Cell(2, 1), // A2
+            ),
+        };
+
+        sheet.spreadsheet_set_cell_value(1, 3, avg_expr, &mut status);
+
+        assert_eq!(sheet.cells[2].as_ref().unwrap().value, 150); // Cell should be set to 150
+
+        sheet.spreadsheet_undo(&mut status);
+        assert_eq!(sheet.cells[2].as_ref().unwrap().value, 0); // Cell should be reset to 0
+
     }
 
     #[test]
@@ -1342,7 +1434,7 @@ mod spreadsheet_tests {
             operator: '-',
             rhs: Operand::Number(3),
         });
-        
+
         
 
     }
