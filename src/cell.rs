@@ -11,7 +11,6 @@ pub struct Cell {
     pub value: i32,
     // pub formula: Option<String>,
     pub formula: ParsedRHS,
-    pub dependents_initialised: i16,
     pub dependents: Dependents,
 }
 
@@ -30,14 +29,12 @@ impl Cell {
             value: 0,
             error: false,
             formula: ParsedRHS::None,
-            dependents_initialised: 0,
             dependents: Dependents::None,
         }
     }
 
     pub fn dep_insert(&mut self, row: i16, col: i16) {
         // Set the initialised flag to 1 whenever a dependency is added
-        self.dependents_initialised = 1;
         let key = (row, col);
 
         match &mut self.dependents {
@@ -79,9 +76,6 @@ impl Cell {
     }
 
     pub fn contains(&self, row: i16, col: i16) -> bool {
-        if self.dependents_initialised == 0 {
-            return false;
-        }
 
         let key = (row, col);
         match &self.dependents {

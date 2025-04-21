@@ -16,7 +16,6 @@ mod cell_tests {
         assert_eq!(cell.value, 0);
         assert!(!cell.error);
         assert!(matches!(cell.formula, cop::spreadsheet::ParsedRHS::None));
-        assert_eq!(cell.dependents_initialised, 0);
         assert!(matches!(cell.dependents, Dependents::None));
     }
 
@@ -53,6 +52,11 @@ mod cell_tests {
     #[test]
     fn test_managing_dependents() {
         let mut cell = cell_create(1, 1);
+
+        // Check whether no dependents exist
+        assert!(!cell_contains(&cell, 1, 1)); // nothing should be there
+        assert!(!cell_contains(&cell, 2, 1)); // nothing should be there
+        assert!(!cell_contains(&cell, 2, 2)); // nothing should be there
 
         cell_dep_insert(&mut cell, 2, 1); // B1
         cell_dep_insert(&mut cell, 3, 2); // C2

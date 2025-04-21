@@ -2,7 +2,7 @@
 #![cfg(not(tarpaulin_include))]
 
 mod spreadsheet_tests {
-    use cop::cell::cell_dep_insert;
+    use cop::cell::{cell_dep_insert,cell_contains};
     use cop::spreadsheet::{FunctionName, Operand, ParsedRHS, Spreadsheet};
     // use std::collections::BTreeSet;
     use std::time::Instant;
@@ -561,13 +561,11 @@ mod spreadsheet_tests {
         let c1_idx = 0 * 10 + 2;
 
         if let Some(cell_b1) = sheet.cells[b1_idx].as_ref() {
-            let deps = sheet.get_dependent_names(cell_b1);
-            assert!(deps.contains(&(1, 1)));
+            assert!(cell_contains(cell_b1, 1, 1));
         }
 
         if let Some(cell_c1) = sheet.cells[c1_idx].as_ref() {
-            let deps = sheet.get_dependent_names(cell_c1);
-            assert!(deps.contains(&(1, 1)));
+            assert!(cell_contains(cell_c1, 1, 1));
         }
 
         // Now change A1's formula to depend only on D1
@@ -1271,6 +1269,29 @@ mod spreadsheet_tests {
             }
         );
 
+        let (valid, _,  _, _) = sheet.is_valid_command("J10", "COPY(A1:B2)");
+        assert!(!valid);
+
+        let (valid, row, col, expr) = sheet.is_valid_command("A1", "SLEEP(2)");
+        assert!(valid);
+        assert_eq!(row, 1);
+        assert_eq!(col, 1);
+        assert_eq!(
+            expr,
+            ParsedRHS::Sleep (Operand::Number(2))
+        );
+
+        let (valid, row, col, expr) = sheet.is_valid_command("A1", "SLEEP(B2)");
+        assert!(valid);
+        assert_eq!(row, 1);
+        assert_eq!(col, 1);
+        assert_eq!(
+            expr,
+            ParsedRHS::Sleep (Operand::Cell(2,2))
+        );
+
+        let (valid, row, col, expr) = sheet.is_valid_command("A1", "");
+        assert!(!valid);
         // Test invalid commands
 
         // Invalid cell name
@@ -1564,6 +1585,19 @@ mod spreadsheet_tests {
 
         let (valid, _, _, _) = sheet.is_valid_command("A1", "");
         assert!(!valid); // Empty formula
+
+        let (valid, _, _, _) = sheet.is_valid_command("A1", "2.3-+3");
+        assert!(!valid); // invalid number
+        let (valid, _, _, _) = sheet.is_valid_command("A1", "2-+3.5");
+        assert!(!valid); // invalid number
+        let (valid, _, _, _) = sheet.is_valid_command("A1", "A+3");
+        assert!(!valid); // invalid number
+        let (valid, _, _, _) = sheet.is_valid_command("A1", "A1+B");
+        assert!(!valid); // invalid number
+
+        let (valid,_,_,_) = sheet.is_valid_command("A1", "A1%B1");
+        assert!(!valid);
+
     }
 
     #[test]
