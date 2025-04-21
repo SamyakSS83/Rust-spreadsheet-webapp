@@ -778,7 +778,15 @@
 
             // Home button click handler
             homeButton.addEventListener('click', function () {
-                window.location.href = '/';
+                // Extract username from the current URL path
+                const pathParts = window.location.pathname.split('/').filter(Boolean);
+                if (pathParts.length > 0) {
+                    const username = pathParts[0];
+                    window.location.href = `/${username}`;
+                } else {
+                    // Fallback in case we can't determine the username
+                    window.location.href = '/';
+                }
             });
 
             // Initialize the grid

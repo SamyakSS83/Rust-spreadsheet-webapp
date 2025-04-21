@@ -9,7 +9,7 @@ use axum::extract::FromRef;
 #[cfg(feature = "web")]
 use axum::{
     Form, Json,
-    extract::{Query, State},
+    extract::{Query, State, Path as AxumPath},  // Rename to avoid conflict
     http::{StatusCode, header},
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
@@ -21,10 +21,14 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::{self, File, create_dir_all};
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Path, PathBuf};  // Keep this import
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime};
 use uuid::Uuid;
+#[cfg(feature = "web")]
+use crate::saving;
+#[cfg(feature = "web")]
+use crate::spreadsheet::Spreadsheet;
 
 // User data structures
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -66,18 +70,18 @@ const SESSION_DURATION: u64 = 24 * 60 * 60; // 24 hours in seconds
 // Initialization function to ensure database structure exists
 pub fn init_database() -> std::io::Result<()> {
     // Create database directory if it doesn't exist
-    if !Path::new(DATABASE_DIR).exists() {
+    if !std::path::Path::new(DATABASE_DIR).exists() {
         create_dir_all(DATABASE_DIR)?;
     }
 
     // Create Admin folder
-    let admin_dir = Path::new(DATABASE_DIR).join("Admin");
+    let admin_dir = std::path::Path::new(DATABASE_DIR).join("Admin");
     if !admin_dir.exists() {
         create_dir_all(&admin_dir)?;
     }
 
     // Create users.json if it doesn't exist
-    let users_path = Path::new(USERS_FILE);
+    let users_path = std::path::Path::new(USERS_FILE);
     if !users_path.exists() {
         let mut file = File::create(users_path)?;
         file.write_all(b"{}")?;
@@ -138,7 +142,7 @@ pub fn register_user(username: &str, password: &str) -> Result<(), String> {
     let password_hash = hash_password(password)?;
 
     // Create user directory
-    let user_dir = Path::new(DATABASE_DIR).join(username);
+    let user_dir = std::path::Path::new(DATABASE_DIR).join(username);
     if create_dir_all(&user_dir).is_err() {
         return Err("Failed to create user directory".to_string());
     }
@@ -323,109 +327,119 @@ pub async fn require_auth(
 #[cfg(feature = "web")]
 pub async fn list_files(
     jar: CookieJar,
-    axum::extract::Path(username): axum::extract::Path<String>,
+    AxumPath(username): AxumPath<String>,
 ) -> Result<Html<String>, (StatusCode, &'static str)> {
-    // Verify user is authorized
-    if let Some(session_cookie) = jar.get("session") {
-        if let Some(current_user) = validate_session(session_cookie.value()) {
-            // Check if the current user is trying to access their own files
-            if current_user == username {
-                let files = get_user_files(&username);
-
-                // Generate HTML for file list
-                let mut html = String::from(
-                    "<!DOCTYPE html>
-                <html>
-                <head>
-                    <title>Your Files</title>
-                    <style>
-                        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
-                        h1 { color: #333; }
-                        .file-list { margin-top: 20px; }
-                        .file-item { 
-                            padding: 10px; 
-                            border: 1px solid #ddd; 
-                            margin-bottom: 10px;
-                            border-radius: 4px;
-                        }
-                        .file-item:hover { background-color: #f5f5f5; }
-                        .file-link { 
-                            text-decoration: none; 
-                            color: #2196F3; 
-                            font-weight: bold;
-                            display: block;
-                        }
-                        .file-info { 
-                            color: #666; 
-                            font-size: 0.8em;
-                            margin-top: 5px;
-                        }
-                        .new-sheet { 
-                            display: inline-block;
-                            margin-top: 20px;
-                            padding: 10px 15px;
-                            background-color: #4CAF50;
-                            color: white;
-                            text-decoration: none;
-                            border-radius: 4px;
-                        }
-                        .logout {
-                            position: absolute;
-                            top: 20px;
-                            right: 20px;
-                            padding: 5px 10px;
-                            background-color: #f44336;
-                            color: white;
-                            text-decoration: none;
-                            border-radius: 4px;
-                        }
-                    </style>
-                </head>
-                <body>
-                    <a href='/logout' class='logout'>Logout</a>
-                    <h1>Welcome, ",
-                );
-
-                html.push_str(&username);
-                html.push_str("</h1>");
-
-                if files.is_empty() {
-                    html.push_str("<p>You don't have any spreadsheets yet.</p>");
+    // 1) auth check
+    if let Some(cookie) = jar.get("session") {
+        if let Some(current) = validate_session(cookie.value()) {
+            if current == username {
+                // 2) load list.json
+                let user_dir = PathBuf::from(DATABASE_DIR).join(&username);
+                let list_path = user_dir.join("list.json");
+                let entries: Vec<SheetEntry> = if list_path.exists() {
+                    let data = fs::read_to_string(&list_path).unwrap_or_default();
+                    serde_json::from_str(&data).unwrap_or_default()
                 } else {
-                    html.push_str("<div class='file-list'>");
-                    html.push_str("<h2>Your Spreadsheets:</h2>");
+                    Vec::new()
+                };
 
-                    for file in files {
-                        let file_path = format!("/{}/{}", username, file.name);
-                        html.push_str("<div class='file-item'>");
-                        html.push_str(&format!(
-                            "<a href='{}' class='file-link'>{}</a>",
-                            file_path, file.name
-                        ));
-
-                        // Format timestamps
-                        let modified = chrono::DateTime::<chrono::Utc>::from(file.modified)
-                            .format("%Y-%m-%d %H:%M:%S");
-
-                        html.push_str(&format!(
-                            "<div class='file-info'>Last modified: {}</div>",
-                            modified
-                        ));
-                        html.push_str("</div>");
-                    }
-
-                    html.push_str("</div>");
-                }
-
-                html.push_str(
-                    "<a href='/sheet?rows=10&cols=10' class='new-sheet'>Create New Spreadsheet</a>",
+                // 3) Get the template and inject the data
+                let mut template = include_str!("./static/list.html").to_string();
+                
+                // Insert the sheets data as JavaScript
+                let sheets_json = serde_json::to_string(&entries)
+                    .unwrap_or_else(|_| "[]".to_string());
+                
+                template = template.replace(
+                    "</head>",
+                    &format!("    <script>const SHEETS_DATA = {};</script>\n</head>", sheets_json)
                 );
-                html.push_str("</body></html>");
 
-                return Ok(Html(html));
+                return Ok(Html(template));
+            }
+        }
+    }
+    Err((StatusCode::UNAUTHORIZED, "Unauthorized"))
+}
+
+#[cfg(feature = "web")]
+#[derive(Debug, Serialize, Deserialize)]
+struct SheetEntry {
+    name: String,
+    status: String, // "public" or "private"
+}
+
+#[cfg(feature = "web")]
+#[derive(Debug, Deserialize)]
+pub struct CreateSheetForm {
+    pub name: String,
+    pub rows: u16,
+    pub cols: u16,
+    pub status: String,
+}
+
+#[cfg(feature = "web")]
+pub async fn serve_create_sheet_form(
+    jar: CookieJar,
+    AxumPath(username): AxumPath<String>,
+) -> Result<Redirect, (StatusCode, &'static str)> {
+    // Redirect back to the list page - the form is now in the modal
+    Ok(Redirect::to(&format!("/{}", username)))
+}
+
+#[cfg(feature = "web")]
+pub async fn handle_create_sheet(
+    jar: CookieJar,
+    AxumPath(username): AxumPath<String>,
+    Form(form): Form<CreateSheetForm>,
+) -> Redirect {
+    // 1) Create the directory if it doesn't exist
+    let user_dir = PathBuf::from(DATABASE_DIR).join(&username);
+    let _ = create_dir_all(&user_dir);
+
+    // 2) Create and save the spreadsheet
+    let filename = format!("{}.bin.gz", form.name);
+    let path = user_dir.join(&filename);
+    let sheet = Spreadsheet::spreadsheet_create(form.rows as i16, form.cols as i16)
+        .expect("Failed to create spreadsheet");
+    saving::save_spreadsheet(&sheet, path.to_str().unwrap())
+        .expect("Failed to save spreadsheet");
+
+    // 3) Update list.json
+    let list_path = user_dir.join("list.json");
+    let mut entries: Vec<SheetEntry> = if list_path.exists() {
+        let data = fs::read_to_string(&list_path).unwrap_or_default();
+        serde_json::from_str(&data).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    entries.push(SheetEntry { name: form.name, status: form.status });
+    fs::write(&list_path, serde_json::to_string_pretty(&entries).unwrap())
+        .expect("Failed to write list.json");
+
+    Redirect::to(&format!("/{}", username))
+}
+
+#[cfg(feature = "web")]
+pub async fn handle_delete_sheet(
+    jar: CookieJar,
+    AxumPath((username, sheet_name)): AxumPath<(String, String)>,
+) -> Redirect {
+    // 1) Delete the spreadsheet file
+    let user_dir = PathBuf::from(DATABASE_DIR).join(&username);
+    let file_path = user_dir.join(format!("{}.bin.gz", sheet_name));
+    let _ = fs::remove_file(&file_path);
+
+    // 2) Update list.json
+    let list_path = user_dir.join("list.json");
+    if list_path.exists() {
+        if let Ok(data) = fs::read_to_string(&list_path) {
+            if let Ok(mut entries) = serde_json::from_str::<Vec<SheetEntry>>(&data) {
+                entries.retain(|entry| entry.name != sheet_name);
+                let _ = fs::write(&list_path, serde_json::to_string_pretty(&entries).unwrap());
             }
         }
     }
 
-    Err((StatusCode::UNAUTHORIZED, "Unauthorized"))
+    Redirect::to(&format!("/{}", username))
 }

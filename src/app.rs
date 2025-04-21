@@ -115,7 +115,9 @@ pub async fn run(rows: i16, cols: i16) -> Result<(), Box<dyn std::error::Error>>
         .route("/api/save_with_name", post(save_spreadsheet_with_name))
         // user file routes
         .route("/:username", get(login::list_files))
-        .route("/:username/:filename", get(load_user_file))
+        .route("/:username/create", get(login::serve_create_sheet_form).post(login::handle_create_sheet))
+        .route("/:username/:sheet_name", get(load_user_file))  // Add this line
+        .route("/:username/:sheet_name/delete", post(login::handle_delete_sheet))
         // only these get require_auth
         .layer(middleware::from_fn(login::require_auth));
 
@@ -126,7 +128,7 @@ pub async fn run(rows: i16, cols: i16) -> Result<(), Box<dyn std::error::Error>>
         .with_state(app_state);
 
     // Start server
-    let listener = TcpListener::bind("127.0.0.1:3000").await?;
+    let listener = TcpListener::bind("0.0.0.0:3000").await?;
     println!("Listening on http://127.0.0.1:3000");
     axum::serve(listener, app).await?;
 
@@ -244,27 +246,27 @@ async fn update_cell(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<CellUpdate>,
 ) -> impl IntoResponse {
-    println!("(DEBUG) Received update_cell payload: {:?}", payload);
+    // println!("(DEBUG) Received update_cell payload: {:?}", payload);
     let mut sheet = state.sheet.lock().unwrap();
     let mut status = String::new();
 
     // Parse the cell name
     if let Some((row, col)) = sheet.spreadsheet_parse_cell_name(&payload.cell) {
-        println!("(DEBUG) Parsed cell name: row={}, col={}", row, col);
+        // println!("(DEBUG) Parsed cell name: row={}, col={}", row, col);
 
         // Parse the formula string into ParsedRHS using is_valid_command
         let (is_valid, _, _, parsed_rhs) = sheet.is_valid_command(&payload.cell, &payload.rhs);
 
         if is_valid {
-            println!("(DEBUG) Valid formula parsed: {:?}", parsed_rhs);
+            // println!("(DEBUG) Valid formula parsed: {:?}", parsed_rhs);
             sheet.spreadsheet_set_cell_value(row, col, parsed_rhs, &mut status);
         } else {
             status = format!("Invalid formula: {}", payload.rhs);
-            println!("(DEBUG) {}", status);
+            // println!("(DEBUG) {}", status);
         }
     } else {
         status = format!("Invalid cell identifier: {}", payload.cell);
-        println!("(DEBUG) {}", status);
+        // println!("(DEBUG) {}", status);
     }
 
     // Retrieve the updated cell value and print its state
@@ -410,11 +412,11 @@ async fn load_user_file(
         return Redirect::to("/login").into_response();
     }
 
-    let path = format!("database/{}/{}", username, filename);
+    let path = format!("database/{}/{}.bin.gz", username, filename);
 
     // Check if file exists
     if !std::path::Path::new(&path).exists() {
-        return Html("<h1>File not found</h1>".to_string()).into_response();
+        return Html(format!("<h1>File not found</h1><p>Path: {}</p>", path)).into_response();
     }
 
     // Load the file
