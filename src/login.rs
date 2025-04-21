@@ -7,6 +7,8 @@ use argon2::{
 #[cfg(feature = "web")]
 use axum::extract::FromRef;
 #[cfg(feature = "web")]
+use urlencoding;
+#[cfg(feature = "web")]
 use axum::{
     Form, Json,
     extract::{Query, State, Path as AxumPath},  // Rename to avoid conflict
@@ -29,18 +31,50 @@ use uuid::Uuid;
 use crate::saving;
 #[cfg(feature = "web")]
 use crate::spreadsheet::Spreadsheet;
+#[cfg(feature = "web")]
+use crate::mailer::{Mailer, generate_reset_code};
 
 // User data structures
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct User {
     pub username: String,
+    pub email: String,
     pub password_hash: String,
+    // #[cfg(feature = "web")]
+    pub reset_code: Option<String>,
+    // #[cfg(feature = "web")]
+    pub reset_code_expires: Option<SystemTime>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UserCredentials {
     pub username: String,
+    #[serde(default)]
+    pub email: String,
     pub password: String,
+}
+
+#[cfg(feature = "web")]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PasswordResetRequest {
+    pub email: String,
+}
+
+#[cfg(feature = "web")]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PasswordResetConfirm {
+    pub email: String,
+    pub reset_code: String,
+    pub new_password: String,
+}
+
+#[cfg(feature = "web")]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PasswordChangeRequest {
+    pub username: String,
+    pub old_password: String,
+    pub new_password: String,
+    pub confirm_password: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -74,11 +108,7 @@ pub fn init_database() -> std::io::Result<()> {
         create_dir_all(DATABASE_DIR)?;
     }
 
-    // Create Admin folder
-    let admin_dir = std::path::Path::new(DATABASE_DIR).join("Admin");
-    if !admin_dir.exists() {
-        create_dir_all(&admin_dir)?;
-    }
+
 
     // Create users.json if it doesn't exist
     let users_path = std::path::Path::new(USERS_FILE);
@@ -127,15 +157,20 @@ pub fn save_users(users: &HashMap<String, User>) -> Result<(), String> {
 }
 
 // Register a new user
-pub fn register_user(username: &str, password: &str) -> Result<(), String> {
-    if username.is_empty() || password.is_empty() {
-        return Err("Username and password cannot be empty".to_string());
+pub fn register_user(username: &str, email: &str, password: &str) -> Result<(), String> {
+    if username.is_empty() || password.is_empty() || email.is_empty() {
+        return Err("Username, email and password cannot be empty".to_string());
     }
 
     // Check if username already exists
     let mut users = get_users()?;
     if users.contains_key(username) {
         return Err("Username already exists".to_string());
+    }
+
+    // Check if email is already in use
+    if users.values().any(|user| user.email == email) {
+        return Err("Email address is already registered".to_string());
     }
 
     // Hash the password
@@ -150,7 +185,10 @@ pub fn register_user(username: &str, password: &str) -> Result<(), String> {
     // Add user to users.json
     let user = User {
         username: username.to_string(),
+        email: email.to_string(),
         password_hash,
+        reset_code: None,
+        reset_code_expires: None,
     };
 
     users.insert(username.to_string(), user);
@@ -266,6 +304,7 @@ pub async fn serve_signup_page() -> Html<&'static str> {
 #[cfg(feature = "web")]
 #[axum::debug_handler]
 pub async fn handle_login(jar: CookieJar, Form(credentials): Form<UserCredentials>) -> Response {
+    // We don't need email for login
     match verify_user(&credentials.username, &credentials.password) {
         Ok(true) => {
             let session_id = create_session(&credentials.username);
@@ -285,7 +324,7 @@ pub async fn handle_login(jar: CookieJar, Form(credentials): Form<UserCredential
 pub async fn handle_signup(
     Form(credentials): Form<UserCredentials>,
 ) -> Result<Redirect, (StatusCode, String)> {
-    match register_user(&credentials.username, &credentials.password) {
+    match register_user(&credentials.username, &credentials.email, &credentials.password) {
         Ok(_) => Ok(Redirect::to("/login?registered=true")),
         Err(e) => Err((StatusCode::BAD_REQUEST, e)),
     }
@@ -442,4 +481,268 @@ pub async fn handle_delete_sheet(
     }
 
     Redirect::to(&format!("/{}", username))
+}
+
+// #[cfg(feature = "web")]
+// pub async fn handle_forgot_password(
+//     Form(reset_req): Form<PasswordResetRequest>,
+// ) -> impl IntoResponse {
+//     let mut users = match get_users() {
+//         Ok(users) => users,
+//         Err(_) => {
+//             return (StatusCode::INTERNAL_SERVER_ERROR, "Server error").into_response();
+//         }
+//     };
+
+//     // Find user by email
+//     let user = users.values_mut().find(|u| u.email == reset_req.email);
+    
+//     if let Some(user) = user {
+//         let reset_code = generate_reset_code();
+//         let expires = SystemTime::now() + Duration::from_secs(3600); // 1 hour
+
+//         // Update user with reset code
+//         user.reset_code = Some(reset_code.clone());
+//         user.reset_code_expires = Some(expires);
+
+//         // Save updated users
+//         if save_users(&users).is_err() {
+//             return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to save reset code").into_response();
+//         }
+
+//         // Send email
+//         match Mailer::new() {
+//             Ok(mailer) => {
+//                 if let Err(_) = mailer.send_password_reset(&reset_req.email, &reset_code) {
+//                     return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to send email").into_response();
+//                 }
+//             }
+//             Err(_) => {
+//                 return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to initialize mailer").into_response();
+//             }
+//         }
+
+//         (StatusCode::OK, "Password reset email sent").into_response()
+//     } else {
+//         (StatusCode::NOT_FOUND, "Email not found").into_response()
+//     }
+// }
+
+#[cfg(feature = "web")]
+pub async fn handle_forgot_password(
+    Form(reset_req): Form<PasswordResetRequest>,
+) -> impl IntoResponse {
+    let mut users = match get_users() {
+        Ok(users) => users,
+        Err(_) => {
+            return Redirect::to("/forgot-password?error=Server+error").into_response();
+        }
+    };
+
+    // Find user by email
+    let user = users.values_mut().find(|u| u.email == reset_req.email);
+    
+    if let Some(user) = user {
+        let reset_code = generate_reset_code();
+        let expires = SystemTime::now() + Duration::from_secs(3600); // 1 hour
+
+        // Update user with reset code
+        user.reset_code = Some(reset_code.clone());
+        user.reset_code_expires = Some(expires);
+
+        // Save updated users
+        if save_users(&users).is_err() {
+            return Redirect::to("/forgot-password?error=Failed+to+generate+reset+code").into_response();
+        }
+
+        // Send email
+        match Mailer::new() {
+            Ok(mailer) => {
+                if let Err(_) = mailer.send_password_reset(&reset_req.email, &reset_code) {
+                    return Redirect::to("/forgot-password?error=Failed+to+send+email").into_response();
+                }
+            }
+            Err(_) => {
+                return Redirect::to("/forgot-password?error=Failed+to+initialize+mailer").into_response();
+            }
+        }
+
+        // Redirect to reset form with success message
+        Redirect::to(&format!("/reset-password?email_sent=true&email={}", 
+            urlencoding::encode(&reset_req.email))).into_response()
+    } else {
+        Redirect::to("/forgot-password?error=Email+not+found").into_response()
+    }
+}
+
+#[cfg(feature = "web")]
+pub async fn handle_reset_password(
+    Form(reset_confirm): Form<PasswordResetConfirm>,
+) -> impl IntoResponse {
+    let mut users = match get_users() {
+        Ok(users) => users,
+        Err(_) => {
+            return Redirect::to("/reset-password?error=Server+error").into_response();
+        }
+    };
+
+    // Find user by email
+    let user = users.values_mut().find(|u| u.email == reset_confirm.email);
+
+    if let Some(user) = user {
+        // Verify reset code
+        if let Some(stored_code) = &user.reset_code {
+            if let Some(expires) = user.reset_code_expires {
+                if SystemTime::now() > expires {
+                    return Redirect::to("/reset-password?error=Reset+code+expired").into_response();
+                }
+
+                if stored_code != &reset_confirm.reset_code {
+                    return Redirect::to("/reset-password?error=Invalid+reset+code").into_response();
+                }
+
+                // Update password
+                match hash_password(&reset_confirm.new_password) {
+                    Ok(hash) => {
+                        user.password_hash = hash;
+                        user.reset_code = None;
+                        user.reset_code_expires = None;
+
+                        if save_users(&users).is_err() {
+                            return Redirect::to("/reset-password?error=Failed+to+save+new+password").into_response();
+                        }
+
+                        Redirect::to("/login?success=Password+reset+successful").into_response()
+                    }
+                    Err(_) => Redirect::to("/reset-password?error=Failed+to+hash+password").into_response(),
+                }
+            } else {
+                Redirect::to("/reset-password?error=Reset+code+expired").into_response()
+            }
+        } else {
+            Redirect::to("/reset-password?error=No+reset+code+found").into_response()
+        }
+    } else {
+        Redirect::to("/reset-password?error=Email+not+found").into_response()
+    }
+}
+
+// #[cfg(feature = "web")]
+// pub async fn handle_reset_password(
+//     Form(reset_confirm): Form<PasswordResetConfirm>,
+// ) -> impl IntoResponse {
+//     let mut users = match get_users() {
+//         Ok(users) => users,
+//         Err(_) => {
+//             return (StatusCode::INTERNAL_SERVER_ERROR, "Server error").into_response();
+//         }
+//     };
+
+//     // Find user by email
+//     let user = users.values_mut().find(|u| u.email == reset_confirm.email);
+
+//     if let Some(user) = user {
+//         // Verify reset code
+//         if let Some(stored_code) = &user.reset_code {
+//             if let Some(expires) = user.reset_code_expires {
+//                 if SystemTime::now() > expires {
+//                     return (StatusCode::BAD_REQUEST, "Reset code expired").into_response();
+//                 }
+
+//                 if stored_code != &reset_confirm.reset_code {
+//                     return (StatusCode::BAD_REQUEST, "Invalid reset code").into_response();
+//                 }
+
+//                 // Update password
+//                 match hash_password(&reset_confirm.new_password) {
+//                     Ok(hash) => {
+//                         user.password_hash = hash;
+//                         user.reset_code = None;
+//                         user.reset_code_expires = None;
+
+//                         if save_users(&users).is_err() {
+//                             return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to save new password").into_response();
+//                         }
+
+//                         (StatusCode::OK, "Password reset successful").into_response()
+//                     }
+//                     Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Failed to hash password").into_response(),
+//                 }
+//             } else {
+//                 (StatusCode::BAD_REQUEST, "Reset code expired").into_response()
+//             }
+//         } else {
+//             (StatusCode::BAD_REQUEST, "No reset code found").into_response()
+//         }
+//     } else {
+//         (StatusCode::NOT_FOUND, "Email not found").into_response()
+//     }
+// }
+
+#[cfg(feature = "web")]
+pub async fn handle_change_password(
+    jar: CookieJar,
+    Form(change_req): Form<PasswordChangeRequest>,
+) -> impl IntoResponse {
+    // Verify current user is authenticated
+    if let Some(cookie) = jar.get("session") {
+        if let Some(current_user) = validate_session(cookie.value()) {
+            if current_user != change_req.username {
+                return (StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
+            }
+
+            // Verify old password and update to new password
+            let mut users = match get_users() {
+                Ok(users) => users,
+                Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Server error").into_response(),
+            };
+
+            if let Some(user) = users.get_mut(&change_req.username) {
+                // Verify old password
+                match verify_password(&change_req.old_password, &user.password_hash) {
+                    Ok(true) => {
+                        // Verify new passwords match
+                        if change_req.new_password != change_req.confirm_password {
+                            return (StatusCode::BAD_REQUEST, "New passwords don't match").into_response();
+                        }
+
+                        // Update password
+                        match hash_password(&change_req.new_password) {
+                            Ok(hash) => {
+                                user.password_hash = hash;
+                                if save_users(&users).is_err() {
+                                    return (StatusCode::INTERNAL_SERVER_ERROR, "Failed to save new password").into_response();
+                                }
+                                (StatusCode::OK, "Password changed successfully").into_response()
+                            }
+                            Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Failed to hash password").into_response(),
+                        }
+                    }
+                    Ok(false) => (StatusCode::BAD_REQUEST, "Invalid old password").into_response(),
+                    Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Password verification failed").into_response(),
+                }
+            } else {
+                (StatusCode::NOT_FOUND, "User not found").into_response()
+            }
+        } else {
+            (StatusCode::UNAUTHORIZED, "Invalid session").into_response()
+        }
+    } else {
+        (StatusCode::UNAUTHORIZED, "No session found").into_response()
+    }
+}
+
+#[cfg(feature = "web")]
+pub async fn serve_forgot_password_page() -> Html<&'static str> {
+    Html(include_str!("./static/password.html"))
+}
+
+#[cfg(feature = "web")]
+pub async fn serve_reset_password_page() -> Html<&'static str> {
+    Html(include_str!("./static/password.html"))
+}
+
+#[cfg(feature = "web")]
+pub async fn serve_change_password_page() -> Html<&'static str> {
+    Html(include_str!("./static/password.html"))
 }

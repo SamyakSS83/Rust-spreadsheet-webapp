@@ -3,6 +3,7 @@ mod cell;
 mod graph;
 mod saving;
 mod spreadsheet;
+mod mailer;
 
 use cop::spreadsheet::Spreadsheet;
 
