@@ -10,7 +10,7 @@ use std::time::Instant;
 
 // #[tokio::main]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let s = Instant::now(); // Start time for the entire program
+    // let s = Instant::now(); // Start time for the entire program
     let args: Vec<String> = env::args().collect();
 
     // if args.len() > 1 && args[1] == "-dassi_nahi_to_rassi" {
@@ -138,15 +138,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         //         status = String::from("ok");
         //     }
         } else {
-            status = String::from("invalid command 3");
+            status = String::from("invalid command");
         }
 
         // Update the start_time after processing the command
         // start_time = Instant::now();
     }
     // }
-    let e = s.elapsed().as_secs_f64(); // Calculate total elapsed time
-    println!("Total elapsed time: {:.1} seconds", e);
+    // let e = s.elapsed().as_secs_f64(); // Calculate total elapsed time
+    // println!("Total elapsed time: {:.1} seconds", e);
 
     Ok(())
 }

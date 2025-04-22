@@ -77,7 +77,6 @@ pub enum FunctionName {
     Avg,
     Sum,
     Stdev,
-    Cut,
     Copy,
 }
 

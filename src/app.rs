@@ -209,6 +209,12 @@ pub async fn run(rows: i16, cols: i16) -> Result<(), Box<dyn std::error::Error>>
         .route("/api/cell/:cell_name", get(get_cell))
         .route("/api/update_cell", post(update_cell))
         .route("/api/sheet_info", get(get_sheet_info))
+        .route("/api/save", post(save_spreadsheet))
+        .route("/api/export", post(export_spreadsheet))
+        .route("/api/load", post(load_spreadsheet))
+        .route("/api/graph", post(generate_graph))
+        .route("/api/download/csv", get(download_csv))
+        .route("/api/download/xlsx", get(download_xlsx))
         .route("/api/sheet_status", get(get_sheet_status))
         .nest_service("/static", ServeDir::new("static"));
 
@@ -219,12 +225,6 @@ pub async fn run(rows: i16, cols: i16) -> Result<(), Box<dyn std::error::Error>>
         // .route("/api/sheet", get(get_sheet_data))
         // .route("/api/cell/:cell_name", get(get_cell))
         // .route("/api/sheet_info", get(get_sheet_info))
-        .route("/api/save", post(save_spreadsheet))
-        .route("/api/export", post(export_spreadsheet))
-        .route("/api/load", post(load_spreadsheet))
-        .route("/api/graph", post(generate_graph))
-        .route("/api/download/csv", get(download_csv))
-        .route("/api/download/xlsx", get(download_xlsx))
         .route("/api/save_with_name", post(save_spreadsheet_with_name))
         // user file routes
         .route("/:username", get(login::list_files))
@@ -1109,7 +1109,6 @@ fn formula_to_string(formula: &ParsedRHS) -> String {
                 FunctionName::Avg => "AVG",
                 FunctionName::Sum => "SUM",
                 FunctionName::Stdev => "STDEV",
-                FunctionName::Cut => "CUT",
                 FunctionName::Copy => "COPY",
             };
 

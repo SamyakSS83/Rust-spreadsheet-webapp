@@ -12,7 +12,7 @@ This application is a complete rewrite of a legacy spreadsheet tool from C to Ru
 - **Frontend**: HTML, CSS
 - **Backend**: Rust (via `actix-web`)
 - **Persistence**: Gzip + Bincode for `.bin.gz`; CSV/XLSX support
-- **Graph Support**: Line, bar, area, scatter via `plotters`
+- **Graph Support**: Line, bar, area, scatter via `plotters` and `image`
 - **Authentication**: Sessions, password reset, cookie-based auth
 - **Key Features**: Copy/paste, undo/redo, formula evaluation, dependency graph, public/private sheet sharing
 
@@ -22,7 +22,7 @@ This application is a complete rewrite of a legacy spreadsheet tool from C to Ru
 
 ### Frontend Layer
 - Written in HTML/CSS
-- Renders a 10×10 visible grid window
+- Renders a grid window of the custom size
 - Formula bar component for inline editing
 - Handles mouse, keyboard, and touchpad interactions
 - Sends commands to backend via WebAssembly bindings
@@ -47,7 +47,6 @@ This application is a complete rewrite of a legacy spreadsheet tool from C to Ru
 ### `cell` Module
 - Core `Cell` structure storing value, formula, dependents
 - Methods for dependency management (insert, remove, check)
-- Formula parsing and validation
 - Location tracking via row/column coordinates
 
 ### `spreadsheet` Module
@@ -55,7 +54,7 @@ This application is a complete rewrite of a legacy spreadsheet tool from C to Ru
 - Formula evaluation engine with function support
 - Dependency tracking with cycle detection
 - Topological sorting for correct update order
-- Command processing (set cell, copy/paste, undo/redo)
+- Command processing (set cell, copy/paste of **values only**, undo/redo)
 - Error handling and propagation
 
 ### `login` Module
@@ -84,7 +83,7 @@ This application is a complete rewrite of a legacy spreadsheet tool from C to Ru
 - Graph plotting via `plotters`
 - Support for line, bar, area, scatter charts
 - Customizable titles, labels, and dimensions
-- Image data generation for browser display
+- Image data generation for browser display and saving via `image`
 
 ---
 
@@ -93,13 +92,13 @@ This application is a complete rewrite of a legacy spreadsheet tool from C to Ru
 ### Public Endpoints
 - **Authentication**: `/login`, `/signup`, `/logout`, `/reset-password`, `/forgot-password`, `/change-password`
 - **Public Access**: `/:username/:sheet_name` for read-only sheet access
+- **Data Operations**: `/api/update_cell`, `/api/save`, `/api/load`, `/api/graph`, `/api/export`
+- **Downloads**: `/api/download/csv`, `/api/download/xlsx`
 - **API Access**: `/api/sheet`, `/api/cell/:cell_name`, `/api/sheet_info` for read-only data
 - **Static Content**: Static assets from `/static`
 
 ### Protected Endpoints
 - **Sheet Management**: `/sheet` for editing UI
-- **Data Operations**: `/api/update_cell`, `/api/save`, `/api/load`, `/api/graph`, `/api/export`
-- **Downloads**: `/api/download/csv`, `/api/download/xlsx`
 - **File Operations**: `/:username` (file listing), `/:username/create` (create new sheet),
   `/:username/:sheet_name/status` (update access), `/:username/:sheet_name/delete` (deletion)
 
@@ -115,7 +114,7 @@ This application is a complete rewrite of a legacy spreadsheet tool from C to Ru
 
 ### Formula Support
 - Basic operations: `+`, `-`, `*`, `/`
-- Functions: `SUM`, `AVG`, `MAX`, `MIN`, `STDEV`, `SLEEP`
+- Functions: `SUM`, `AVG`, `MAX`, `MIN`, `STDEV`, `SLEEP`, `COPY`, `UNDO`, `REDO`
 - Formula processing with regex-based parsing
 - One-time parsing optimization for performance
 
@@ -127,7 +126,7 @@ This application is a complete rewrite of a legacy spreadsheet tool from C to Ru
 
 ### User Interface
 - Copy/paste support with range validation
-- Undo/redo through versioned states
+- Undo through versioned states
 - Navigation via keyboard/mouse/touchpad
 - Formula bar for direct formula editing
 
@@ -148,6 +147,8 @@ This application is a complete rewrite of a legacy spreadsheet tool from C to Ru
 - Spreadsheet sharing by URL
 - User-based access control
 - Metadata tracking of file ownership
+- Real time updates for public sheets
+- First access precedence updation conflict resolution
 
 ---
 
