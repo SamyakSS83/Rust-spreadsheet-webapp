@@ -73,6 +73,17 @@
             overflow: hidden;
             white-space: nowrap;
             background-color: white;
+            outline: none;
+            user-select: none; /* Prevent text selection unless editing */
+        }
+
+        .cell.editing {
+            user-select: text;
+            white-space: pre-wrap;
+            overflow: visible;
+            background-color: #fff;
+            box-shadow: inset 0 0 0 2px #4d90fe;
+            padding: 3px;
         }
 
         .header-cell {
@@ -101,6 +112,10 @@
         .selected {
             background-color: #e6f3ff;
             border: 1px solid #4d90fe;
+        }
+
+        .in-range {
+            background-color: rgba(200, 220, 255, 0.5);
         }
 
         .error {
@@ -324,9 +339,19 @@
             const modal = document.getElementById("graph-modal");
             const closeModal = document.getElementById("close-modal");
 
+            let isFormulaBuildMode = false;
+            let formulaBeingBuilt = null;
+
             // Add version tracking for conflict management
             let currentVersion = 0;
             let isPolling = true;
+
+            // Add after the variable declarations in DOMContentLoaded
+            let isRangeSelectionMode = false;
+            let rangeStartCell = null;
+            let rangeEndCell = null;
+            let functionMode = null;
+            let selectedRange = [];
 
             // Start polling for updates
             startPolling();
@@ -521,9 +546,25 @@
 
             // Select a cell
             function selectCell(cell) {
+                // If we're in formula build mode, don't change selection
+                if (isFormulaBuildMode && formulaBeingBuilt && cell !== formulaBeingBuilt) {
+                    return;
+                }
+                
+                // If we're in range selection mode, don't change the primary selection
+                if (isRangeSelectionMode) {
+                    rangeEndCell = cell;
+                    highlightSelectedRange();
+                    return;
+                }
+                
                 // Deselect previously selected cell
                 if (selectedCell) {
                     selectedCell.classList.remove('selected');
+                    // If we were in edit mode, exit it first
+                    if (selectedCell.isContentEditable) {
+                        exitCellEditMode(selectedCell);
+                    }
                 }
 
                 // Select new cell
@@ -537,10 +578,339 @@
                     displayBar.textContent += ` | Formula: ${cell.dataset.formula}`;
                 }
 
-                // Update formula bar
+                // Update formula bar but don't focus it automatically
                 formulaBar.value = cell.dataset.formula || '';
-                formulaBar.focus();
             }
+
+            // Make a cell editable for direct editing
+            function enterCellEditMode(cell) {
+                if (cell) {
+                    cell.contentEditable = true;
+                    cell.classList.add('editing');
+                    cell.focus();
+                    
+                    // Select all text in the cell for easy replacement
+                    const selection = window.getSelection();
+                    const range = document.createRange();
+                    range.selectNodeContents(cell);
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                    
+                    // Store original text in case user cancels
+                    cell.dataset.originalText = cell.textContent;
+                    
+                    // If user types "=", we'll enter formula build mode
+                    cell.addEventListener('input', handleCellInput);
+                }
+            }
+            
+            // Handler for cell input - checks for formula build mode
+            function handleCellInput(e) {
+                const cell = e.target;
+                const text = cell.textContent.trim();
+                
+                // If the cell starts with "=", enter formula build mode
+                if (text === "=") {
+                    isFormulaBuildMode = true;
+                    formulaBeingBuilt = cell;
+                    displayBar.textContent = "Building formula: Click on cells to add them to your formula";
+                } else if (!text.startsWith('=')) {
+                    // If no longer starting with =, exit formula build mode
+                    isFormulaBuildMode = false;
+                    formulaBeingBuilt = null;
+                }
+                
+                // Check for function names that will trigger range selection
+                const functionMatch = text.match(/^=?\s*(sum|min|max|avg|stdev|copy)\s*$/i);
+                if (functionMatch) {
+                    functionMode = functionMatch[1].toUpperCase();
+                    displayBar.textContent = `Building ${functionMode} formula. Press Shift+Arrow keys to select range.`;
+                }
+            }
+
+            // Exit edit mode for a cell
+            function exitCellEditMode(cell) {
+                if (cell && cell.isContentEditable) {
+                    // Remove the input handler
+                    cell.removeEventListener('input', handleCellInput);
+                    
+                    // Save the value from the cell
+                    let newValue = cell.textContent.trim();
+                    cell.contentEditable = false;
+                    cell.classList.remove('editing');
+                    
+                    // Reset formula build mode
+                    isFormulaBuildMode = false;
+                    formulaBeingBuilt = null;
+                    
+                    // Update the formula bar with the new value
+                    formulaBar.value = newValue;
+                    // If the value starts with =, remove it before submitting
+                    if (newValue.startsWith('=')) {
+                        // newValue = newValue.substring(1);
+                        // console.log("Formula bar updated with:", newValue);
+                        newValue = newValue.substring(1);
+                        // console.log("Formula bar updated with:", newValue);
+
+                    }
+                    // Submit the value to the server
+                    submitCellValue(cell.dataset.name, newValue);
+                }
+            }
+
+            // Submit a cell value to the server
+            async function submitCellValue(cellName, formula) {
+                try {
+                    const response = await fetch('/api/update_cell', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            cell: cellName,
+                            rhs: formula,
+                            version: currentVersion
+                        })
+                    });
+
+                    const result = await response.json();
+
+                    if (result.status.startsWith('Conflict:')) {
+                        // Handle version conflict
+                        displayBar.textContent = result.status;
+                        if (result.needs_refresh) {
+                            await fetchSheetData();
+                        }
+                    } else {
+                        // Update was successful
+                        currentVersion = result.version;
+                        
+                        // Refresh the sheet to show all updates
+                        fetchSheetData();
+
+                        // Update the display bar
+                        displayBar.textContent = `Value: ${result.value !== undefined ? result.value : ''}`;
+                        if (formula) {
+                            displayBar.textContent += ` | Formula: ${formula}`;
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error updating cell:', error);
+                    displayBar.textContent = `Error updating cell: ${error.message}`;
+                }
+            }
+
+            // Add double-click handler to enter edit mode
+            grid.addEventListener('dblclick', function(e) {
+                const cell = e.target.closest('.cell');
+                if (cell && !cell.classList.contains('header-cell')) {
+                    selectCell(cell);
+                    enterCellEditMode(cell);
+                }
+            });
+
+            // Modify the cell click handler to support formula building
+            grid.addEventListener('click', function(e) {
+                const cell = e.target.closest('.cell');
+                if (!cell || cell.classList.contains('header-cell')) return;
+                
+                // If we're in formula build mode and clicked a different cell than the one we're editing
+                if (isFormulaBuildMode && formulaBeingBuilt && cell !== formulaBeingBuilt) {
+                    // Prevent the default selection behavior
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    // Get the clicked cell's name (e.g., "A1")
+                    const cellReference = cell.dataset.name;
+                    
+                    // Insert the cell reference at the current cursor position or append it
+                    const selection = window.getSelection();
+                    const range = selection.getRangeAt(0);
+                    
+                    // Create text node with the cell reference
+                    const referenceNode = document.createTextNode(cellReference);
+                    range.insertNode(referenceNode);
+                    
+                    // Move cursor after the inserted text
+                    range.setStartAfter(referenceNode);
+                    range.setEndAfter(referenceNode);
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                    
+                    // Keep focus on the formula cell
+                    formulaBeingBuilt.focus();
+                    
+                    return;
+                }
+                
+                // Normal cell selection
+                selectCell(cell);
+            });
+
+            // Also add formula building mode to the formula bar
+            formulaBar.addEventListener('input', function(e) {
+                const text = formulaBar.value.trim();
+                
+                if (text === "=") {
+                    isFormulaBuildMode = true;
+                    displayBar.textContent = "Building formula: Click on cells to add them to your formula";
+                } else if (!text.startsWith('=')) {
+                    isFormulaBuildMode = false;
+                }
+            });
+            
+            // Handle clicks when formula bar has focus and we're in formula building mode
+            grid.addEventListener('click', function(e) {
+                const cell = e.target.closest('.cell');
+                if (!cell || cell.classList.contains('header-cell')) return;
+                
+                if (isFormulaBuildMode && document.activeElement === formulaBar) {
+                    // Prevent default cell selection
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    // Get cursor position in formula bar
+                    const cursorPos = formulaBar.selectionStart;
+                    
+                    // Insert cell reference at cursor position
+                    const cellRef = cell.dataset.name;
+                    const before = formulaBar.value.substring(0, cursorPos);
+                    const after = formulaBar.value.substring(cursorPos);
+                    
+                    formulaBar.value = before + cellRef + after;
+                    
+                    // Set cursor position after the inserted reference
+                    formulaBar.selectionStart = cursorPos + cellRef.length;
+                    formulaBar.selectionEnd = cursorPos + cellRef.length;
+                    
+                    // Keep focus on formula bar
+                    formulaBar.focus();
+                }
+            });
+
+            // Enhance keyboard navigation to handle direct editing
+            document.addEventListener('keydown', function (e) {
+                if (isFormulaBuildMode) {
+                    if (e.key === 'Enter') {
+                        // Finish building formula
+                        if (formulaBeingBuilt) {
+                            exitCellEditMode(formulaBeingBuilt);
+                        } else if (document.activeElement === formulaBar) {
+                            // Submit formula from formula bar
+                            const formula = formulaBar.value.trim();
+                            if (selectedCell) {
+                                submitCellValue(selectedCell.dataset.name, formula);
+                            }
+                        }
+                        isFormulaBuildMode = false;
+                        return;
+                    }
+                    
+                    if (e.key === 'Escape') {
+                        // Cancel formula building
+                        isFormulaBuildMode = false;
+                        if (formulaBeingBuilt) {
+                            formulaBeingBuilt.textContent = formulaBeingBuilt.dataset.originalText || '';
+                            exitCellEditMode(formulaBeingBuilt);
+                        }
+                        displayBar.textContent = "";
+                        return;
+                    }
+                }
+
+                if (!selectedCell) return;
+
+                const currentRow = parseInt(selectedCell.dataset.row);
+                const currentCol = parseInt(selectedCell.dataset.col);
+                let newRow = currentRow;
+                let newCol = currentCol;
+
+                // If we're already editing a cell directly
+                if (selectedCell.isContentEditable) {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        // Save changes and exit edit mode
+                        exitCellEditMode(selectedCell);
+                        e.preventDefault();
+                        return;
+                    }
+                    if (e.key === 'Escape') {
+                        // Cancel editing
+                        selectedCell.textContent = selectedCell.dataset.originalText || '';
+                        selectedCell.contentEditable = false;
+                        selectedCell.classList.remove('editing');
+                        e.preventDefault();
+                        return;
+                    }
+                    // Let all other keys be handled normally when editing
+                    return;
+                }
+
+                // When not in edit mode, handle different key interactions
+                if (e.key === 'Enter' || e.key === 'F2') {
+                    // Enter or F2 should enter edit mode for the cell
+                    if (document.activeElement === formulaBar) {
+                        // If the formula bar already has focus, submit the value
+                        if (e.key === 'Enter') {
+                            const formula = formulaBar.value.trim();
+                            submitCellValue(selectedCell.dataset.name, formula);
+                        }
+                    } else {
+                        // Otherwise, enter edit mode on the cell
+                        enterCellEditMode(selectedCell);
+                    }
+                    e.preventDefault();
+                    return;
+                }
+                
+                // Start editing immediately on any printable character key
+                if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+                    // If a letter, number or symbol is pressed, enter edit mode and start with that character
+                    enterCellEditMode(selectedCell);
+                    // Clear the cell content since we want to replace it
+                    selectedCell.textContent = '';
+                    // Let the key event continue to insert the character
+                    return;
+                }
+                
+                // Navigate with arrow keys (when formula bar is not focused)
+                if (document.activeElement !== formulaBar) {
+                    switch (e.key) {
+                        case 'ArrowUp':
+                            newRow = Math.max(1, currentRow - 1);
+                            e.preventDefault(); 
+                            break;
+                        case 'ArrowDown':
+                            newRow = Math.min(sheetData.rows, currentRow + 1);
+                            e.preventDefault();
+                            break;
+                        case 'ArrowLeft':
+                            newCol = Math.max(1, currentCol - 1);
+                            e.preventDefault();
+                            break;
+                        case 'ArrowRight':
+                            newCol = Math.min(sheetData.cols, currentCol + 1);
+                            e.preventDefault();
+                            break;
+                        case 'Tab':
+                            // Tab moves right, Shift+Tab moves left
+                            if (e.shiftKey) {
+                                newCol = Math.max(1, currentCol - 1);
+                            } else {
+                                newCol = Math.min(sheetData.cols, currentCol + 1);
+                            }
+                            e.preventDefault();
+                            break;
+                    }
+
+                    if (newRow !== currentRow || newCol !== currentCol) {
+                        const newCellSelector = `.cell[data-row="${newRow}"][data-col="${newCol}"]`;
+                        const newCell = document.querySelector(newCellSelector);
+                        if (newCell) {
+                            selectCell(newCell);
+                        }
+                    }
+                }
+            });
 
             // Handle formula submission
             formulaBar.addEventListener('keydown', async function (e) {
@@ -810,43 +1180,6 @@
                 downloadDropdown.classList.add('hidden');
             });
 
-            // Add keyboard navigation
-            document.addEventListener('keydown', function (e) {
-                if (!selectedCell) return;
-
-                const currentRow = parseInt(selectedCell.dataset.row);
-                const currentCol = parseInt(selectedCell.dataset.col);
-                let newRow = currentRow;
-                let newCol = currentCol;
-
-                // Only navigate if not focused on formula bar
-                if (document.activeElement !== formulaBar) {
-                    switch (e.key) {
-                        case 'ArrowUp':
-                            newRow = Math.max(1, currentRow - 1);
-                            break;
-                        case 'ArrowDown':
-                            newRow = Math.min(sheetData.rows, currentRow + 1);
-                            break;
-                        case 'ArrowLeft':
-                            newCol = Math.max(1, currentCol - 1);
-                            break;
-                        case 'ArrowRight':
-                            newCol = Math.min(sheetData.cols, currentCol + 1);
-                            break;
-                    }
-
-                    if (newRow !== currentRow || newCol !== currentCol) {
-                        const newCellSelector = `.cell[data-row="${newRow}"][data-col="${newCol}"]`;
-                        const newCell = document.querySelector(newCellSelector);
-                        if (newCell) {
-                            selectCell(newCell);
-                            e.preventDefault(); // Prevent default scrolling
-                        }
-                    }
-                }
-            });
-
             // Home button click handler
             homeButton.addEventListener('click', function () {
                 // Extract username from the current URL path
@@ -938,6 +1271,97 @@
             cancelSaveBtn.addEventListener('click', function() {
                 saveModal.classList.add('hidden');
             });
+
+            // Function to highlight a range of cells
+            function highlightSelectedRange() {
+                // Clear previous range highlighting
+                document.querySelectorAll('.cell.in-range').forEach(cell => {
+                    cell.classList.remove('in-range');
+                });
+                
+                if (!rangeStartCell || !rangeEndCell) return;
+                
+                // Get the coordinates of start and end cells
+                const startRow = parseInt(rangeStartCell.dataset.row);
+                const startCol = parseInt(rangeStartCell.dataset.col);
+                const endRow = parseInt(rangeEndCell.dataset.row);
+                const endCol = parseInt(rangeEndCell.dataset.col);
+                
+                // Determine the actual top-left and bottom-right cells
+                const topRow = Math.min(startRow, endRow);
+                const bottomRow = Math.max(startRow, endRow);
+                const leftCol = Math.min(startCol, endCol);
+                const rightCol = Math.max(startCol, endCol);
+                
+                // Highlight all cells in the range
+                for (let row = topRow; row <= bottomRow; row++) {
+                    for (let col = leftCol; col <= rightCol; col++) {
+                        const cell = document.querySelector(`.cell[data-row="${row}"][data-col="${col}"]`);
+                        if (cell) {
+                            cell.classList.add('in-range');
+                        }
+                    }
+                }
+                
+                // Update the selected cell display to show the range
+                const startName = rangeStartCell.dataset.name;
+                const endName = rangeEndCell.dataset.name;
+                selectedCellDisplay.textContent = `${startName}:${endName}`;
+            }
+            
+            // Function to clear range selection
+            function clearRangeSelection() {
+                isRangeSelectionMode = false;
+                rangeStartCell = null;
+                rangeEndCell = null;
+                functionMode = null;
+                
+                // Remove highlighting from all cells
+                document.querySelectorAll('.cell.in-range').forEach(cell => {
+                    cell.classList.remove('in-range');
+                });
+            }
+            
+            // Function to get A1:B2 style notation for a range
+            function getCellRangeNotation(startCell, endCell) {
+                if (!startCell || !endCell) return '';
+                
+                // Get the coordinates
+                const startRow = parseInt(startCell.dataset.row);
+                const startCol = parseInt(startCell.dataset.col);
+                const endRow = parseInt(endCell.dataset.row);
+                const endCol = parseInt(endCell.dataset.col);
+                
+                // Determine the actual top-left and bottom-right cells
+                const topRow = Math.min(startRow, endRow);
+                const bottomRow = Math.max(startRow, endRow);
+                const leftCol = Math.min(startCol, endCol);
+                const rightCol = Math.max(startCol, endCol);
+                
+                // Get the cell reference for top-left cell
+                const topLeftRef = document.querySelector(
+                    `.cell[data-row="${topRow}"][data-col="${leftCol}"]`
+                )?.dataset.name;
+                
+                // Get the cell reference for bottom-right cell
+                const bottomRightRef = document.querySelector(
+                    `.cell[data-row="${bottomRow}"][data-col="${rightCol}"]`
+                )?.dataset.name;
+                
+                return `${topLeftRef}:${bottomRightRef}`;
+            }
+            
+            // Function to update the formula with the current range
+            function updateFunctionFormula() {
+                if (!functionMode || !rangeStartCell || !rangeEndCell) return;
+                
+                const formulaCell = document.querySelector('.cell.editing');
+                if (formulaCell) {
+                    const range = getCellRangeNotation(rangeStartCell, rangeEndCell);
+                    // Update the cell with the formula so far (without closing parenthesis)
+                    formulaCell.textContent = `=${functionMode}(${range}`;
+                }
+            }
         });
     </script>
 </body>
