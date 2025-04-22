@@ -73,7 +73,7 @@ path = "src/bin/graph_test.rs"
 required-features = ["web"]
 
 [lib]
-name = "cop"
+name = "rusty spreadsheet"
 path = "src/lib.rs"
 
 [lints.rust]
