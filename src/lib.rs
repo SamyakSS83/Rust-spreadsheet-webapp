@@ -9,7 +9,7 @@ This application is a complete rewrite of a legacy spreadsheet tool from C to Ru
 
 ## 📦 Project Summary
 
-- **Frontend**: HTML, CSS, WebAssembly (via `eframe`)
+- **Frontend**: HTML, CSS
 - **Backend**: Rust (via `actix-web`)
 - **Persistence**: Gzip + Bincode for `.bin.gz`; CSV/XLSX support
 - **Graph Support**: Line, bar, area, scatter via `plotters`
@@ -21,14 +21,14 @@ This application is a complete rewrite of a legacy spreadsheet tool from C to Ru
 ## 🏗️ Architecture
 
 ### Frontend Layer
-- Written in HTML/CSS + WebAssembly using `eframe`
+- Written in HTML/CSS
 - Renders a 10×10 visible grid window
 - Formula bar component for inline editing
 - Handles mouse, keyboard, and touchpad interactions
 - Sends commands to backend via WebAssembly bindings
 
 ### Backend Layer
-- Built using `actix-web`
+- Built using `actix-web`, `auxm` and `wasm-bindgen`
 - Contains spreadsheet logic, cell storage, command processing
 - Manages dependencies, error handling, and formula evaluation
 - Ensures recalculations respect topological order
@@ -245,7 +245,6 @@ This application is a complete rewrite of a legacy spreadsheet tool from C to Ru
 
 ## ➕ Future Enhancements
 
-- Multicellular formulas (e.g., `SUM(A1:B3)`)
 - Drag and drop support in GUI
 - VLOOKUP/HLOOKUP and more Excel functions
 - Multi-cell selection in GUI
@@ -267,6 +266,8 @@ pub mod login;
 pub mod mailer;
 pub mod saving;
 pub mod spreadsheet;
+#[cfg(feature = "web")]
+pub mod app;
 
 /// Re-export everything from these modules to make it easier to use
 pub use cell::*;
