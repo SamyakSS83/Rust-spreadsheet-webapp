@@ -281,7 +281,6 @@ pub fn save_users(users: &HashMap<String, User>) -> Result<(), String> {
 /// # Errors
 /// * Returns an error if the username or email is already in use
 /// * Returns an error if any required fields are empty
-
 #[cfg(feature = "web")]
 pub fn register_user(username: &str, email: &str, password: &str) -> Result<(), String> {
     if username.is_empty() || password.is_empty() || email.is_empty() {
@@ -336,7 +335,6 @@ pub fn register_user(username: &str, email: &str, password: &str) -> Result<(), 
 ///
 /// # Errors
 /// * Returns an error if there is a problem accessing the user database
-
 #[cfg(feature = "web")]
 pub fn verify_user(username: &str, password: &str) -> Result<bool, String> {
     let users = get_users()?;
@@ -384,7 +382,6 @@ fn hash_password(password: &str) -> Result<String, String> {
 ///
 /// # Errors
 /// * Returns an error if the hash is in an invalid format
-
 #[cfg(feature = "web")]
 fn verify_password(password: &str, hash: &str) -> Result<bool, String> {
     let parsed_hash = match PasswordHash::new(hash) {
@@ -407,7 +404,6 @@ fn verify_password(password: &str, hash: &str) -> Result<bool, String> {
 ///
 /// # Returns
 /// * `String` - A unique session ID
-
 #[cfg(feature = "web")]
 pub fn create_session(username: &str) -> String {
     let session_id = Uuid::new_v4().to_string();
@@ -828,7 +824,10 @@ pub async fn handle_forgot_password(
         // Send email
         match Mailer::new() {
             Ok(mailer) => {
-                if let Err(_) = mailer.send_password_reset(&reset_req.email, &reset_code) {
+                if mailer
+                    .send_password_reset(&reset_req.email, &reset_code)
+                    .is_err()
+                {
                     return Redirect::to("/forgot-password?error=Failed+to+send+email")
                         .into_response();
                 }

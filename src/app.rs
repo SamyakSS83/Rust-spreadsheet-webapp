@@ -664,11 +664,11 @@ async fn save_spreadsheet_with_name(
     // Build the filename
     let filename = if query.name.trim().is_empty() {
         "spreadsheet.bin.gz".to_string()
-        } else if !query.name.ends_with(".bin.gz") {
-            format!("{}.bin.gz", query.name)
-        } else {
-            query.name
-        };
+    } else if !query.name.ends_with(".bin.gz") {
+        format!("{}.bin.gz", query.name)
+    } else {
+        query.name
+    };
 
     let path = format!("{}/{}", user_dir, filename);
 
