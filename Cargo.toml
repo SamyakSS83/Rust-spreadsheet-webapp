@@ -16,20 +16,20 @@ lazy_static = "1.4"
 chrono = "0.4"
 bincode = "1.3"
 flate2 = "1.0"
-rust_xlsxwriter = "0.44"
 regex = "1.10.2"
-plotters = "0.3"
-image = "0.24" 
 tempfile = "3.6.0"
 getrandom = "0.2"
+time = "0.3"
 
 # Authentication & security
-argon2 = { version = "0.5", features = ["std"] }
-rand_core = { version = "0.6", features = ["getrandom"] }
-uuid = { version = "1.6", features = ["v4", "serde"] }
-time = "0.3"
-local-ip-address = "0.5.3"  
+argon2 = { version = "0.5", features = ["std"] ,optional = true}
+rand_core = { version = "0.6", features = ["getrandom"] , optional = true}
+uuid = { version = "1.6", features = ["v4", "serde"] , optional = true}
+local-ip-address = {version = "0.5.3"  , optional = true }
 # Web dependencies - marked as optional
+rust_xlsxwriter = {version = "0.44", optional = true}
+plotters = {version = "0.3", optional = true}
+image = { version = "0.24", optional = true} 
 axum = { version = "0.7", features = ["macros", "multipart"], optional = true }
 axum-extra = { version = "0.9", features = ["cookie"], optional = true }
 tower-http = { version = "0.5", features = ["fs", "trace", "cors"], optional = true }
@@ -48,7 +48,9 @@ urlencoding = {version = "2.1.0", optional = true}
 
 [features]
 default = []
-web = ["tokio", "axum", "axum-extra", "tower-http", "tower", "env_logger", "actix-web", "actix-files", "handlebars", "wasm-bindgen", "js-sys","lettre","rand","urlencoding"]
+web = ["tokio", "axum", "axum-extra", "tower-http", "tower", "env_logger", "actix-web", "actix-files", "handlebars", "wasm-bindgen", "js-sys","lettre","rand","urlencoding", "local-ip-address", "image", "plotters","rust_xlsxwriter"
+, "argon2","rand_core" ,"uuid"]
+
 
 # Web server binary (requires web dependencies)
 [[bin]]
@@ -68,6 +70,7 @@ path = "src/bin/spreadsheet_test.rs"
 [[bin]]
 name = "graph_test"
 path = "src/bin/graph_test.rs"
+required-features = ["web"]
 
 [lib]
 name = "cop"

@@ -272,7 +272,6 @@ pub mod spreadsheet;
 /// Re-export everything from these modules to make it easier to use
 pub use cell::*;
 pub use downloader::*;
-pub use graph::*;
 pub use login::*;
 pub use saving::*;
 pub use spreadsheet::*;

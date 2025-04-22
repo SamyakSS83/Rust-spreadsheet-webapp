@@ -10,10 +10,12 @@ use axum::{
     routing::{get, post},
 };
 use axum_extra::extract::cookie::CookieJar;
-use local_ip_address::local_ip;  // Add this import
+#[cfg(feature = "web")]
+use local_ip_address::local_ip; // Add this import
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::path::PathBuf;
+// #[cfg(feature = "web")]
+// use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
@@ -21,8 +23,7 @@ use tower_http::services::ServeDir;
 use crate::downloader;
 use crate::graph::{GraphOptions, GraphType, create_graph};
 use crate::login::{
-    self, User, UserCredentials, serve_change_password_page, serve_forgot_password_page,
-    serve_reset_password_page,
+    self, serve_change_password_page, serve_forgot_password_page, serve_reset_password_page,
 };
 use crate::saving;
 use crate::spreadsheet::{FunctionName, Operand, ParsedRHS, Spreadsheet};
@@ -44,10 +45,10 @@ pub struct AppState {
     /// A set of publicly accessible spreadsheets, identified by their paths
     /// Format: "username/sheetname"
     pub public_sheets: Mutex<HashSet<String>>,
-    
+
     /// Version counter for conflict management
     pub version: Mutex<u64>,
-    
+
     /// Last modified timestamp
     pub last_modified: Mutex<std::time::SystemTime>,
 }
@@ -426,7 +427,7 @@ async fn update_cell(
 ) -> impl IntoResponse {
     // Get the current sheet path to check permissions
     let original_path = state.original_path.lock().unwrap().clone();
-    
+
     // Check permission for editing if not logged in or not owner
     if let Some(path) = &original_path {
         // Extract username/sheet_name from path "database/username/sheet_name.bin.gz"
@@ -434,31 +435,35 @@ async fn update_cell(
         if path_parts.len() >= 3 {
             let username = path_parts[1];
             let sheet_name = path_parts[2].trim_end_matches(".bin.gz");
-            
+
             // Get current user from session cookie
             let current_user = jar
                 .get("session")
                 .and_then(|cookie| crate::login::validate_session(cookie.value()));
-            
+
             let is_owner = current_user.as_deref() == Some(username);
-            
+
             // If not owner, check if sheet is public
             if !is_owner {
                 let public_sheets = state.public_sheets.lock().unwrap();
                 let sheet_key = format!("{}/{}", username, sheet_name);
-                
+
                 // If it's not in public sheets, return unauthorized
                 if !public_sheets.contains(&sheet_key) {
-                    return (StatusCode::UNAUTHORIZED, "Not authorized to edit this sheet").into_response();
+                    return (
+                        StatusCode::UNAUTHORIZED,
+                        "Not authorized to edit this sheet",
+                    )
+                        .into_response();
                 }
             }
         }
     }
-    
+
     // Check for version conflicts
     let mut current_version = state.version.lock().unwrap();
     let client_version = payload.version.unwrap_or(0);
-    
+
     // If client has an outdated version, notify them to refresh
     if client_version < *current_version {
         return Json(CellResponse {
@@ -469,7 +474,7 @@ async fn update_cell(
         })
         .into_response();
     }
-    
+
     // Continue with update logic
     let mut sheet = state.sheet.lock().unwrap();
     let mut status = String::new();
@@ -483,25 +488,33 @@ async fn update_cell(
             // Store the current value before updating
             let current_value = {
                 let index = ((row - 1) * sheet.cols + (col - 1)) as usize;
-                sheet.cells.get(index).and_then(|c| c.as_ref()).map(|c| c.value)
+                sheet
+                    .cells
+                    .get(index)
+                    .and_then(|c| c.as_ref())
+                    .map(|c| c.value)
             };
-            
+
             // Update the cell
             sheet.spreadsheet_set_cell_value(row, col, parsed_rhs, &mut status);
-            
+
             // Check if value actually changed
             let new_value = {
                 let index = ((row - 1) * sheet.cols + (col - 1)) as usize;
-                sheet.cells.get(index).and_then(|c| c.as_ref()).map(|c| c.value)
+                sheet
+                    .cells
+                    .get(index)
+                    .and_then(|c| c.as_ref())
+                    .map(|c| c.value)
             };
-            
+
             // If value changed
             if current_value != new_value {
                 was_updated = true;
-                
+
                 // Increment version
                 *current_version += 1;
-                
+
                 // Update last modified time
                 *state.last_modified.lock().unwrap() = std::time::SystemTime::now();
             }
@@ -518,9 +531,11 @@ async fn update_cell(
             // Create a clone of the sheet for saving to avoid deadlocks
             let sheet_clone = {
                 let sheet_ref = &*sheet;
-                bincode::serialize(sheet_ref).ok().and_then(|data| bincode::deserialize(&data).ok())
+                bincode::serialize(sheet_ref)
+                    .ok()
+                    .and_then(|data| bincode::deserialize(&data).ok())
             };
-            
+
             if let Some(sheet_to_save) = sheet_clone {
                 // Spawn a task to save in the background to avoid blocking
                 let path_clone = path.clone();
@@ -715,7 +730,7 @@ async fn load_user_file(
 
     // If not owner, check if the sheet is public.
     let mut is_public = false;
-    if (!is_owner) {
+    if !is_owner {
         let list_path = format!("database/{}/list.json", username);
         if let Ok(data) = std::fs::read_to_string(&list_path) {
             if let Ok(entries) = serde_json::from_str::<Vec<crate::login::SheetEntry>>(&data) {
@@ -819,7 +834,7 @@ async fn change_sheet_status(
     }
 
     // If not found, add a new entry
-    if (!found) {
+    if !found {
         entries.push(SheetEntry {
             name: filename,
             status: form.status,
@@ -1162,13 +1177,16 @@ async fn get_sheet_info(State(state): State<Arc<AppState>>) -> impl IntoResponse
 /// Clients can poll this endpoint to detect when they need to refresh
 async fn get_sheet_status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let version = *state.version.lock().unwrap();
-    
+
     // Convert SystemTime to timestamp
-    let last_modified = state.last_modified.lock().unwrap()
+    let last_modified = state
+        .last_modified
+        .lock()
+        .unwrap()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    
+
     Json(SheetStatusResponse {
         version,
         last_modified,

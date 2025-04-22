@@ -1,4 +1,5 @@
 #![cfg(not(tarpaulin_include))]
+#![cfg(feature = "web")]
 use crate::spreadsheet::Spreadsheet;
 use plotters::prelude::*;
 use std::fs::remove_file;

@@ -85,6 +85,7 @@ pub fn to_csv(sheet: &Spreadsheet) -> Result<String, Box<dyn Error>> {
 ///     Err(e) => eprintln!("Failed to generate XLSX: {}", e),
 /// }
 /// ```
+#[cfg(feature = "web")]
 pub fn to_xlsx(sheet: &Spreadsheet) -> Result<Vec<u8>, Box<dyn Error>> {
     use rust_xlsxwriter::{Workbook, Worksheet};
 

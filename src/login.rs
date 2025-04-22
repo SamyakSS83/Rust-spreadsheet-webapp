@@ -6,20 +6,21 @@ use crate::mailer::{Mailer, generate_reset_code};
 use crate::saving;
 #[cfg(feature = "web")]
 use crate::spreadsheet::Spreadsheet;
+#[cfg(feature = "web")]
 use argon2::{
     Argon2,
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
-#[cfg(feature = "web")]
-use axum::extract::FromRef;
+// #[cfg(feature = "web")]
+// use axum::extract::FromRef;
 #[cfg(feature = "web")]
 use axum::{
     Form,
-    Json,
-    extract::{Path as AxumPath, Query, State}, // Rename to avoid conflict
-    http::{StatusCode, header},
+    // Json,
+    extract::Path as AxumPath, // Rename to avoid conflict
+    http::StatusCode,
     response::{Html, IntoResponse, Redirect, Response},
-    routing::{get, post},
+    // routing::{get, post},
 };
 #[cfg(feature = "web")]
 use axum_extra::extract::cookie::{Cookie, CookieJar};
@@ -32,9 +33,12 @@ use std::path::Path; // Keep this import
 #[cfg(feature = "web")]
 use std::path::PathBuf;
 use std::sync::RwLock;
-use std::time::{Duration, SystemTime};
+#[cfg(feature = "web")]
+use std::time::Duration;
+use std::time::SystemTime;
 #[cfg(feature = "web")]
 use urlencoding;
+#[cfg(feature = "web")]
 use uuid::Uuid;
 
 /// User data structure representing a registered application user
@@ -170,6 +174,7 @@ lazy_static! {
 // Constants
 const USERS_FILE: &str = "database/users.json";
 const DATABASE_DIR: &str = "database";
+#[cfg(feature = "web")]
 const SESSION_DURATION: u64 = 24 * 60 * 60; // 24 hours in seconds
 
 /// Initialize the database structure
@@ -276,6 +281,8 @@ pub fn save_users(users: &HashMap<String, User>) -> Result<(), String> {
 /// # Errors
 /// * Returns an error if the username or email is already in use
 /// * Returns an error if any required fields are empty
+
+#[cfg(feature = "web")]
 pub fn register_user(username: &str, email: &str, password: &str) -> Result<(), String> {
     if username.is_empty() || password.is_empty() || email.is_empty() {
         return Err("Username, email and password cannot be empty".to_string());
@@ -329,6 +336,8 @@ pub fn register_user(username: &str, email: &str, password: &str) -> Result<(), 
 ///
 /// # Errors
 /// * Returns an error if there is a problem accessing the user database
+
+#[cfg(feature = "web")]
 pub fn verify_user(username: &str, password: &str) -> Result<bool, String> {
     let users = get_users()?;
 
@@ -351,6 +360,7 @@ pub fn verify_user(username: &str, password: &str) -> Result<bool, String> {
 ///
 /// # Errors
 /// * Returns an error if the password hashing fails
+#[cfg(feature = "web")]
 fn hash_password(password: &str) -> Result<String, String> {
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
@@ -374,6 +384,8 @@ fn hash_password(password: &str) -> Result<String, String> {
 ///
 /// # Errors
 /// * Returns an error if the hash is in an invalid format
+
+#[cfg(feature = "web")]
 fn verify_password(password: &str, hash: &str) -> Result<bool, String> {
     let parsed_hash = match PasswordHash::new(hash) {
         Ok(hash) => hash,
@@ -395,6 +407,8 @@ fn verify_password(password: &str, hash: &str) -> Result<bool, String> {
 ///
 /// # Returns
 /// * `String` - A unique session ID
+
+#[cfg(feature = "web")]
 pub fn create_session(username: &str) -> String {
     let session_id = Uuid::new_v4().to_string();
     let expires_at = SystemTime::now() + Duration::from_secs(SESSION_DURATION);
@@ -687,7 +701,7 @@ pub async fn list_files(
 /// * `Result<Redirect, (StatusCode, &'static str)>` - Redirect response or error
 #[cfg(feature = "web")]
 pub async fn serve_create_sheet_form(
-    jar: CookieJar,
+    _jar: CookieJar,
     AxumPath(username): AxumPath<String>,
 ) -> Result<Redirect, (StatusCode, &'static str)> {
     // Redirect back to the list page - the form is now in the modal
@@ -707,7 +721,7 @@ pub async fn serve_create_sheet_form(
 /// * `Redirect` - Redirect back to the user's sheet list
 #[cfg(feature = "web")]
 pub async fn handle_create_sheet(
-    jar: CookieJar,
+    _jar: CookieJar,
     AxumPath(username): AxumPath<String>,
     Form(form): Form<CreateSheetForm>,
 ) -> Redirect {
@@ -752,7 +766,7 @@ pub async fn handle_create_sheet(
 /// * `Redirect` - Redirect back to the user's sheet list
 #[cfg(feature = "web")]
 pub async fn handle_delete_sheet(
-    jar: CookieJar,
+    _jar: CookieJar,
     AxumPath((username, sheet_name)): AxumPath<(String, String)>,
 ) -> Redirect {
     // 1) Delete the spreadsheet file

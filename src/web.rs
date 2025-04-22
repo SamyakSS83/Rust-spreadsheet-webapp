@@ -20,8 +20,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Parse command line arguments for rows and cols
     // Currently using default values; command line parsing could be added here
 
-    let mut rows: i16 = 10;
-    let mut cols: i16 = 10;
+    let rows: i16 = 10;
+    let cols: i16 = 10;
 
     // Start the web application with the specified dimensions
     app::run(rows, cols).await

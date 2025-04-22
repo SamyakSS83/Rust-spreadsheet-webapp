@@ -1278,7 +1278,7 @@ mod spreadsheet_tests {
         assert_eq!(col, 1);
         assert_eq!(expr, ParsedRHS::Sleep(Operand::Cell(2, 2)));
 
-        let (valid, row, col, expr) = sheet.is_valid_command("A1", "");
+        let (valid, _row, _col, _expr) = sheet.is_valid_command("A1", "");
         assert!(!valid);
         // Test invalid commands
 
@@ -1592,16 +1592,16 @@ mod spreadsheet_tests {
         let sheet = Spreadsheet::spreadsheet_create(10, 10).unwrap();
 
         // Test valid expressions
-        let (valid, expr) = sheet.is_valid_arithmetic_expression("A1+B2");
+        let (valid, _expr) = sheet.is_valid_arithmetic_expression("A1+B2");
         assert!(valid);
 
-        let (valid, expr) = sheet.is_valid_arithmetic_expression("42-A1");
+        let (valid, _expr) = sheet.is_valid_arithmetic_expression("42-A1");
         assert!(valid);
 
-        let (valid, expr) = sheet.is_valid_arithmetic_expression("A1*10");
+        let (valid, _expr) = sheet.is_valid_arithmetic_expression("A1*10");
         assert!(valid);
 
-        let (valid, expr) = sheet.is_valid_arithmetic_expression("B2/2");
+        let (valid, _expr) = sheet.is_valid_arithmetic_expression("B2/2");
         assert!(valid);
 
         // Test invalid expressions
@@ -1849,7 +1849,7 @@ mod spreadsheet_tests {
         }
 
         // Capture stdout to verify output
-        let mut output = Vec::new();
+        let output = Vec::new();
         {
             // Redirect stdout to our buffer temporarily
             let original_stdout = io::stdout();
@@ -1863,7 +1863,7 @@ mod spreadsheet_tests {
         }
 
         // Convert captured output to string
-        let output_str = String::from_utf8_lossy(&output);
+        let _output_str = String::from_utf8_lossy(&output);
 
         // Basic verification of output structure
         // Note: We can't fully test the exact output string since it's being
