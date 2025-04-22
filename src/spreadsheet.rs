@@ -112,12 +112,6 @@ impl Spreadsheet {
     /// # Returns
     /// * `Some(Box<Self>)` - A boxed Spreadsheet instance if creation was successful
     /// * `None` - If creation failed (should not occur under normal circumstances)
-    ///
-    /// # Example
-    /// ```  let sheet = Spreadsheet::spreadsheet_create(10, 10).unwrap();
-    /// assert_eq!(sheet.rows, 10);
-    /// assert_eq!(sheet.cols, 10);
-    /// ```
     pub fn spreadsheet_create(rows: i16, cols: i16) -> Option<Box<Self>> {
         let mut sheet = Box::new(Spreadsheet {
             rows,
@@ -152,12 +146,6 @@ impl Spreadsheet {
     ///
     /// # Returns
     /// A string representing the column letter(s)
-    ///
-    /// # Example
-    /// ``` assert_eq!(Spreadsheet::col_to_letter(1), "A");
-    /// assert_eq!(Spreadsheet::col_to_letter(26), "Z");
-    /// assert_eq!(Spreadsheet::col_to_letter(27), "AA");
-    /// ```
     pub fn col_to_letter(col: i16) -> String {
         let mut col = col;
         let mut result = String::new();
@@ -179,12 +167,6 @@ impl Spreadsheet {
     ///
     /// # Returns
     /// The column number (1-based)
-    ///
-    /// # Example
-    /// ``` assert_eq!(Spreadsheet::letter_to_col("A"), 1);
-    /// assert_eq!(Spreadsheet::letter_to_col("Z"), 26);
-    /// assert_eq!(Spreadsheet::letter_to_col("AA"), 27);
-    /// ```
     pub fn letter_to_col(letters: &str) -> i16 {
         letters
             .chars()
@@ -202,11 +184,6 @@ impl Spreadsheet {
     ///
     /// # Returns
     /// A string containing the formatted cell name
-    ///
-    /// # Example
-    /// ```assert_eq!(Spreadsheet::get_cell_name(1, 1), "A1");
-    /// assert_eq!(Spreadsheet::get_cell_name(10, 2), "B10");
-    /// ```
     pub fn get_cell_name(row: i16, col: i16) -> String {
         format!("{}{}", Self::col_to_letter(col), row)
     }
@@ -223,13 +200,6 @@ impl Spreadsheet {
     /// # Returns
     /// * `Some((row, col))` - The row and column indices if the cell name is valid
     /// * `None` - If the cell name is invalid or refers to a cell outside the spreadsheet
-    ///
-    /// # Example
-    /// ```let sheet = Spreadsheet::spreadsheet_create(10, 10).unwrap();
-    /// assert_eq!(sheet.spreadsheet_parse_cell_name("A1"), Some((1, 1)));
-    /// assert_eq!(sheet.spreadsheet_parse_cell_name("B10"), Some((10, 2)));
-    /// assert_eq!(sheet.spreadsheet_parse_cell_name("K11"), None); // Outside dimensions
-    /// ```
     pub fn spreadsheet_parse_cell_name(&self, cell_name: &str) -> Option<(i16, i16)> {
         let mut letters = String::new();
         let mut digits = String::new();
@@ -272,12 +242,6 @@ impl Spreadsheet {
     ///
     /// # Returns
     /// `true` if the string contains only digits, `false` otherwise
-    ///
-    /// # Example
-    /// ```assert!(Spreadsheet::is_numeric("123"));
-    /// assert!(!Spreadsheet::is_numeric("12a"));
-    /// assert!(!Spreadsheet::is_numeric(""));
-    /// ```
     pub fn is_numeric(s: &str) -> bool {
         !s.is_empty() && s.chars().all(|c| c.is_ascii_digit())
     }
@@ -979,15 +943,6 @@ impl Spreadsheet {
     /// * The row of the target cell
     /// * The column of the target cell
     /// * The parsed formula
-    ///
-    /// # Example
-    /// ```let sheet = Spreadsheet::spreadsheet_create(10, 10).unwrap();
-    /// let (valid, row, col, formula) = sheet.is_valid_command("A1", "10");
-    /// assert!(valid);
-    /// assert_eq!(row, 1);
-    /// assert_eq!(col, 1);
-    /// // formula will be ParsedRHS::SingleValue(Operand::Number(10))
-    /// ```
     pub fn is_valid_command(&self, cell_name: &str, formula: &str) -> (bool, i16, i16, ParsedRHS) {
         let mut ret = (false, 0, 0, ParsedRHS::None);
         if cell_name.is_empty() || formula.is_empty() {

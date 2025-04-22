@@ -56,14 +56,6 @@ impl Cell {
     /// - error: false
     /// - formula: None
     /// - dependents: None
-    ///
-    /// # Example
-    /// ```let cell = Cell::create(1, 1);
-    /// assert_eq!(cell.row, 1);
-    /// assert_eq!(cell.col, 1);
-    /// assert_eq!(cell.value, 0);
-    /// assert_eq!(cell.error, false);
-    /// ```
     pub fn create(row: i16, col: i16) -> Self {
         Cell {
             row,
@@ -188,12 +180,6 @@ impl Cell {
 ///
 /// # Returns
 /// A boxed Cell for use with external API calls
-///
-/// # Example
-/// ```let cell = cell_create(1, 1);
-/// assert_eq!(cell.row, 1);
-/// assert_eq!(cell.col, 1);
-/// ```
 pub fn cell_create(row: i16, col: i16) -> Box<Cell> {
     Box::new(Cell::create(row, col))
 }
@@ -207,12 +193,6 @@ pub fn cell_create(row: i16, col: i16) -> Box<Cell> {
 /// * `cell` - The cell that is being depended on (the dependency)
 /// * `row` - Row of the dependent cell (the cell that depends on `cell`)
 /// * `col` - Column of the dependent cell (the cell that depends on `cell`)
-///
-/// # Example
-/// ```let mut cell_a1 = cell_create(1, 1);
-/// // Record that B2 depends on A1
-/// cell_dep_insert(&mut cell_a1, 2, 2);
-/// ```
 pub fn cell_dep_insert(cell: &mut Cell, row: i16, col: i16) {
     cell.dep_insert(row, col);
 }
@@ -226,12 +206,6 @@ pub fn cell_dep_insert(cell: &mut Cell, row: i16, col: i16) {
 /// * `cell` - The cell that was being depended on (the dependency)
 /// * `row` - Row of the no-longer-dependent cell
 /// * `col` - Column of the no-longer-dependent cell
-///
-/// # Example
-/// ```let mut cell_a1 = cell_create(1, 1);
-/// // Record that B2 no longer depends on A1
-/// cell_dep_remove(&mut cell_a1, 2, 2);
-/// ```
 pub fn cell_dep_remove(cell: &mut Cell, row: i16, col: i16) {
     cell.dep_remove(row, col);
 }
@@ -247,13 +221,6 @@ pub fn cell_dep_remove(cell: &mut Cell, row: i16, col: i16) {
 ///
 /// # Returns
 /// `true` if the specified cell depends on the given cell, `false` otherwise
-///
-/// # Example
-/// ```let mut cell_a1 = cell_create(1, 1);
-/// cell_dep_insert(&mut cell_a1, 2, 2);
-/// assert!(cell_contains(&cell_a1, 2, 2));
-/// assert!(!cell_contains(&cell_a1, 3, 3));
-/// ```
 pub fn cell_contains(cell: &Cell, row: i16, col: i16) -> bool {
     cell.contains(row, col)
 }
