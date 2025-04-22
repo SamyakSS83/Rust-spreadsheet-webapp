@@ -1,5 +1,11 @@
 #![cfg(not(tarpaulin_include))]
 
+fn main() {
+    // When run directly, this will run the tests
+    println!("=== Cell Test Suite ===");
+    println!("Run with 'cargo test' to execute tests");
+}
+
 #[cfg(test)]
 mod cell_tests {
     use cop::cell::{Cell, Dependents, cell_create, cell_dep_insert, cell_dep_remove};
@@ -75,7 +81,7 @@ mod cell_tests {
         // Check that Set was created by verifying format
         match &cell.dependents {
             Dependents::Vector(_) => panic!("Should have converted to Set"),
-            Dependents::Set(_) => assert!(true), // This is expected
+            Dependents::Set(_) => {}, // This is expected
             Dependents::None => panic!("Should not be None"),
         }
         // Ensure all dependencies are still accessible
@@ -105,7 +111,7 @@ mod cell_tests {
         // Check that Set was created by verifying format
         match &cell.dependents {
             Dependents::Vector(_) => panic!("Should have converted to Set"),
-            Dependents::Set(_) => assert!(true), // This is expected
+            Dependents::Set(_) => {}, // This is expected
             Dependents::None => panic!("Should not be None"),
         }
 
@@ -159,7 +165,7 @@ mod cell_tests {
         // Check that Set was created by verifying format
         match &cell.dependents {
             Dependents::Vector(_) => panic!("Should have converted to Set"),
-            Dependents::Set(_) => assert!(true), // This is expected
+            Dependents::Set(_) => {}, // This is expected
             Dependents::None => panic!("Should not be None"),
         }
 
@@ -179,8 +185,4 @@ mod cell_tests {
     }
 }
 
-fn main() {
-    // When run directly, this will run the tests
-    println!("=== Cell Test Suite ===");
-    println!("Run with 'cargo test' to execute tests");
-}
+

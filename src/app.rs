@@ -664,13 +664,11 @@ async fn save_spreadsheet_with_name(
     // Build the filename
     let filename = if query.name.trim().is_empty() {
         "spreadsheet.bin.gz".to_string()
-    } else {
-        if !query.name.ends_with(".bin.gz") {
+        } else if !query.name.ends_with(".bin.gz") {
             format!("{}.bin.gz", query.name)
         } else {
             query.name
-        }
-    };
+        };
 
     let path = format!("{}/{}", user_dir, filename);
 
@@ -813,10 +811,7 @@ async fn change_sheet_status(
     let list_path = format!("database/{}/list.json", username);
     let mut entries = if std::path::Path::new(&list_path).exists() {
         match std::fs::read_to_string(&list_path) {
-            Ok(data) => match serde_json::from_str::<Vec<SheetEntry>>(&data) {
-                Ok(entries) => entries,
-                Err(_) => Vec::new(),
-            },
+            Ok(data) => serde_json::from_str::<Vec<SheetEntry>>(&data).unwrap_or_default(),
             Err(_) => Vec::new(),
         }
     } else {

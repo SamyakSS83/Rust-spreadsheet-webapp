@@ -1,5 +1,7 @@
 // #[cfg(test)]
 #![cfg(not(tarpaulin_include))]
+fn main() {}
+
 #[cfg(test)]
 mod spreadsheet_tests {
     use cop::cell::{cell_contains, cell_dep_insert};
@@ -20,7 +22,7 @@ mod spreadsheet_tests {
         // Test cells initialization
         for r in 1..=10 {
             for c in 1..=10 {
-                let index = ((r - 1) as usize * 10 + (c - 1) as usize) as usize;
+                let index = (r - 1) as usize * 10 + (c - 1) as usize;
                 assert!(sheet.cells[index].is_some());
             }
         }
@@ -34,7 +36,7 @@ mod spreadsheet_tests {
         // Test cells initialization
         for r in 1..=999 {
             for c in 1..=18278 {
-                let index = ((r - 1) as usize * 10 + (c - 1) as usize) as usize;
+                let index = (r - 1) as usize * 10 + (c - 1) as usize;
                 assert!(sheet.cells[index].is_some());
             }
         }
@@ -134,14 +136,14 @@ mod spreadsheet_tests {
         let mut sheet = Spreadsheet::spreadsheet_create(10, 10).unwrap();
 
         // Setup some cell values
-        let a1_idx = 0 * 10 + 0;
-        let a2_idx = 1 * 10 + 0;
-        let b1_idx = 0 * 10 + 1;
-        let b2_idx = 1 * 10 + 1;
-        let c1_idx = 0 * 10 + 2;
-        let d1_idx = 0 * 10 + 3;
-        let d2_idx = 0 * 10 + 4;
-        let d3_idx = 0 * 10 + 5;
+        let a1_idx =   0;
+        let a2_idx = 10 ;
+        let b1_idx =   1;
+        let b2_idx = 10 + 1;
+        let c1_idx =   2;
+        let d1_idx =   3;
+        let d2_idx =   4;
+        let d3_idx =   5;
 
         if let Some(cell) = sheet.cells[a1_idx].as_mut() {
             cell.value = 10;
@@ -189,12 +191,12 @@ mod spreadsheet_tests {
         assert_eq!(value, 1);
         assert!(!error);
 
-        let expr = ParsedRHS::SingleValue(Operand::Number(09));
+        let expr = ParsedRHS::SingleValue(Operand::Number(9));
         let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 1, 1);
         assert_eq!(value, 9);
         assert!(!error);
 
-        let expr = ParsedRHS::SingleValue(Operand::Number(-09));
+        let expr = ParsedRHS::SingleValue(Operand::Number(-9));
         let (value, error) = sheet.spreadsheet_evaluate_expression(&expr, 1, 1);
         assert_eq!(value, -9);
         assert!(!error);
@@ -484,8 +486,8 @@ mod spreadsheet_tests {
         let mut sheet = Spreadsheet::spreadsheet_create(10, 10).unwrap();
 
         // Set up a cyclic dependency: A1 depends on B1, B1 depends on A1
-        let a1_idx = 0 * 10 + 0;
-        let b1_idx = 0 * 10 + 1;
+        let a1_idx =  0;
+        let b1_idx = 1;
 
         // First, modify A1 to depend on B1
         if let Some(cell_a1) = sheet.cells[a1_idx].as_mut() {
@@ -502,7 +504,7 @@ mod spreadsheet_tests {
         assert!(sheet.first_step_find_cycle((1, 2), (1, 1), (0, 0), false));
 
         // Test no cycle
-        let c1_idx = 0 * 10 + 2;
+        let c1_idx =  2;
 
         // First, modify C1 to depend on C2
         if let Some(cell_c1) = sheet.cells[c1_idx].as_mut() {
@@ -514,7 +516,7 @@ mod spreadsheet_tests {
 
         // Test for is_range = true
         // add A1 to dependencies of D1. i.e. changing D1 will change A1
-        let d1_idx = 0 * 10 + 3;
+        let d1_idx = 3;
         if let Some(cell_d1) = sheet.cells[d1_idx].as_mut() {
             cell_dep_insert(cell_d1, 1, 1);
         }
@@ -525,7 +527,7 @@ mod spreadsheet_tests {
         let mut sheet = Spreadsheet::spreadsheet_create(100, 100).unwrap();
         // In dependencies of A1, add B1 to B10 using for loop
         for i in 1..=10 {
-            let a1_idx = 0 * 100 + 0;
+            let a1_idx =  0;
             if let Some(cell_a1) = sheet.cells[a1_idx].as_mut() {
                 cell_dep_insert(cell_a1, i, 2);
             }
@@ -538,7 +540,7 @@ mod spreadsheet_tests {
         let mut sheet = Spreadsheet::spreadsheet_create(10, 10).unwrap();
 
         // Setup A1's formula to depend on B1 and C1
-        let a1_idx = 0 * 10 + 0;
+        let a1_idx =  0;
         if let Some(cell) = sheet.cells[a1_idx].as_mut() {
             cell.formula = ParsedRHS::Arithmetic {
                 lhs: Operand::Cell(1, 2), // B1
@@ -551,8 +553,8 @@ mod spreadsheet_tests {
         sheet.update_dependencies((1, 1), (1, 2), (1, 3), false);
 
         // Check if dependencies were correctly set up
-        let b1_idx = 0 * 10 + 1;
-        let c1_idx = 0 * 10 + 2;
+        let b1_idx =  1;
+        let c1_idx =  2;
 
         if let Some(cell_b1) = sheet.cells[b1_idx].as_ref() {
             assert!(cell_contains(cell_b1, 1, 1));
@@ -584,7 +586,7 @@ mod spreadsheet_tests {
         }
 
         // Check that new dependency was added
-        let d1_idx = 0 * 10 + 3;
+        let d1_idx = 3;
         if let Some(cell_d1) = sheet.cells[d1_idx].as_ref() {
             let deps = sheet.get_dependent_names(cell_d1);
             assert!(deps.contains(&(1, 1)));
@@ -593,29 +595,29 @@ mod spreadsheet_tests {
         // Test for larger spreadsheet
         let mut sheet = Spreadsheet::spreadsheet_create(100, 100).unwrap();
         // set A1 to 5
-        let a1_idx = 0 * 100 + 0;
+        let a1_idx =  0;
         if let Some(cell) = sheet.cells[a1_idx].as_mut() {
             cell.value = 5;
         }
         // set A2 to 10
-        let a2_idx = 1 * 100 + 0;
+        let a2_idx = 100;
         if let Some(cell) = sheet.cells[a2_idx].as_mut() {
             cell.value = 10;
         }
 
         //set A3 to 20
-        let a3_idx = 2 * 100 + 0;
+        let a3_idx = 2 * 100 ;
         if let Some(cell) = sheet.cells[a3_idx].as_mut() {
             cell.value = 20;
         }
         // set A4 to -5
-        let a4_idx = 3 * 100 + 0;
+        let a4_idx = 3 * 100 ;
         if let Some(cell) = sheet.cells[a4_idx].as_mut() {
             cell.value = -5;
         }
 
         //  set B1 to be equal to A1 + A2 using set_cell_value
-        let b1_idx = 0 * 100 + 1;
+        let b1_idx =  1;
         // set formula of B1 to A1 + A2
         if let Some(cell) = sheet.cells[b1_idx].as_mut() {
             cell.formula = ParsedRHS::Arithmetic {
@@ -632,7 +634,7 @@ mod spreadsheet_tests {
         }
         sheet.update_dependencies((1, 1), (0, 0), (0, 0), false);
         // assign C1 to B1 * 2
-        let c1_idx = 0 * 100 + 2;
+        let c1_idx =  2;
         if let Some(cell) = sheet.cells[c1_idx].as_mut() {
             cell.formula = ParsedRHS::Arithmetic {
                 lhs: Operand::Cell(1, 2), // B1
@@ -653,7 +655,7 @@ mod spreadsheet_tests {
 
         // set D1 = MAX(A1:A4)
         // set formula of D1
-        let d1_idx = 0 * 100 + 3;
+        let d1_idx = 3;
         if let Some(cell) = sheet.cells[d1_idx].as_mut() {
             cell.formula = ParsedRHS::Function {
                 name: FunctionName::Max,
@@ -665,7 +667,7 @@ mod spreadsheet_tests {
         }
         // set D2 = MIN(A1:A4)
         // set formula of D2
-        let d2_idx = 1 * 100 + 3;
+        let d2_idx = 100 + 3;
         if let Some(cell) = sheet.cells[d2_idx].as_mut() {
             cell.formula = ParsedRHS::Function {
                 name: FunctionName::Min,
@@ -713,13 +715,13 @@ mod spreadsheet_tests {
         }
         // set E1= SLEEP(A1)
         // set formula of E1
-        let e1_idx = 0 * 100 + 4;
+        let e1_idx = 4;
         if let Some(cell) = sheet.cells[e1_idx].as_mut() {
             cell.formula = ParsedRHS::Sleep(Operand::Cell(1, 1)); // A1
         }
         // set E2= SLEEP(A4)
         // set formula of E2
-        let e2_idx = 1 * 100 + 4;
+        let e2_idx = 100 + 4;
         if let Some(cell) = sheet.cells[e2_idx].as_mut() {
             cell.formula = ParsedRHS::Sleep(Operand::Cell(4, 1)); // A4
         }
@@ -741,7 +743,7 @@ mod spreadsheet_tests {
         // Check that dependencies were correctly set up
         // B1 D1-D5 E1 should be present in dependents of A1
 
-        let a1_idx = 0 * 10 + 0;
+        let a1_idx =  0;
         if let Some(cell_a1) = sheet.cells[a1_idx].as_ref() {
             let deps = sheet.get_dependent_names(cell_a1);
             assert!(deps.contains(&(1, 2)));
@@ -754,7 +756,7 @@ mod spreadsheet_tests {
         }
 
         // dependencies of B1 should contain C1
-        let b1_idx = 0 * 10 + 1;
+        let b1_idx = 1;
         if let Some(cell_b1) = sheet.cells[b1_idx].as_ref() {
             let deps = sheet.get_dependent_names(cell_b1);
             assert!(deps.contains(&(1, 3)));
@@ -843,8 +845,8 @@ mod spreadsheet_tests {
         // A1 depends on B1
         // B1 depends on C1
         // C1 has no dependencies
-        let a1_idx = 0 * 10 + 0;
-        let b1_idx = 0 * 10 + 1;
+        let a1_idx =  0;
+        let b1_idx =  1;
 
         if let Some(cell_a1) = sheet.cells[a1_idx].as_mut() {
             cell_dep_insert(cell_a1, 1, 2); // A1 points to B1
@@ -900,7 +902,7 @@ mod spreadsheet_tests {
             }
         }
 
-        let sorted_cells = sheet.topo_sort(&sheet.cells[0].as_ref().unwrap());
+        let sorted_cells = sheet.topo_sort(sheet.cells[0].as_ref().unwrap());
         // the vector should be something of the type... A1 then (B1 to B5 in any order) then (C1:C5 in any order)
         assert_eq!(sorted_cells.len(), 11);
         assert_eq!(sorted_cells[0], (1, 1)); // A1
@@ -922,7 +924,7 @@ mod spreadsheet_tests {
         sheet.spreadsheet_set_cell_value(1, 1, val_expr, &mut status);
         assert_eq!(status, "ok");
 
-        let a1_idx = 0 * 10 + 0;
+        let a1_idx = 0;
         if let Some(cell) = sheet.cells[a1_idx].as_ref() {
             assert_eq!(cell.value, 42);
             assert!(!cell.error);
@@ -933,7 +935,7 @@ mod spreadsheet_tests {
         sheet.spreadsheet_set_cell_value(2, 1, ref_expr, &mut status);
         assert_eq!(status, "ok");
 
-        let a2_idx = 1 * 10 + 0;
+        let a2_idx = 10 ;
         if let Some(cell) = sheet.cells[a2_idx].as_ref() {
             assert_eq!(cell.value, 42); // Should get value from A1
             assert!(!cell.error);
@@ -963,7 +965,7 @@ mod spreadsheet_tests {
         sheet.spreadsheet_set_cell_value(3, 1, avg_expr, &mut status);
         assert_eq!(status, "ok");
 
-        let a3_idx = 2 * 10 + 0;
+        let a3_idx = 2 * 10 ;
         if let Some(cell) = sheet.cells[a3_idx].as_ref() {
             assert_eq!(cell.value, 42); // (42 + 42) / 2
             assert!(!cell.error);
@@ -978,7 +980,7 @@ mod spreadsheet_tests {
         };
         sheet.spreadsheet_set_cell_value(4, 1, min_expr, &mut status);
         assert_eq!(status, "ok");
-        let a4_idx = 3 * 10 + 0;
+        let a4_idx = 3 * 10 ;
         if let Some(cell) = sheet.cells[a4_idx].as_ref() {
             assert_eq!(cell.value, 42); // min(42, 42)
             assert!(!cell.error);
@@ -993,7 +995,7 @@ mod spreadsheet_tests {
         };
         sheet.spreadsheet_set_cell_value(5, 1, max_expr, &mut status);
         assert_eq!(status, "ok");
-        let a5_idx = 4 * 10 + 0;
+        let a5_idx = 4 * 10 ;
         if let Some(cell) = sheet.cells[a5_idx].as_ref() {
             assert_eq!(cell.value, 42); // max(42, 42)
             assert!(!cell.error);
@@ -1008,7 +1010,7 @@ mod spreadsheet_tests {
         };
         sheet.spreadsheet_set_cell_value(6, 1, stdev_expr, &mut status);
         assert_eq!(status, "ok");
-        let a6_idx = 5 * 10 + 0;
+        let a6_idx = 5 * 10 ;
         if let Some(cell) = sheet.cells[a6_idx].as_ref() {
             assert_eq!(cell.value, 0); // stdev(42, 42) = 0
             assert!(!cell.error);
@@ -1035,7 +1037,7 @@ mod spreadsheet_tests {
         };
         sheet.spreadsheet_set_cell_value(7, 1, arith_expr, &mut status);
         assert_eq!(status, "ok");
-        let a7_idx = 6 * 10 + 0;
+        let a7_idx = 6 * 10 ;
         if let Some(cell) = sheet.cells[a7_idx].as_ref() {
             assert_eq!(cell.value, 84); // 42 + 42
             assert!(!cell.error);
@@ -1045,7 +1047,7 @@ mod spreadsheet_tests {
         let sleep_expr = ParsedRHS::Sleep(Operand::Number(2)); // Sleep for 2 seconds
         sheet.spreadsheet_set_cell_value(8, 1, sleep_expr, &mut status);
         assert_eq!(status, "ok");
-        let a8_idx = 7 * 10 + 0;
+        let a8_idx = 7 * 10 ;
         if let Some(cell) = sheet.cells[a8_idx].as_ref() {
             assert_eq!(cell.value, 2); // Sleep function should return cell value
             assert!(!cell.error);
@@ -1055,7 +1057,7 @@ mod spreadsheet_tests {
         let sleep_expr = ParsedRHS::Sleep(Operand::Cell(6, 1)); // Sleep for 0 seconds
         sheet.spreadsheet_set_cell_value(9, 1, sleep_expr, &mut status);
         assert_eq!(status, "ok");
-        let a9_idx = 8 * 10 + 0;
+        let a9_idx = 8 * 10 ;
         if let Some(cell) = sheet.cells[a9_idx].as_ref() {
             assert_eq!(cell.value, 0); // Sleep function should return cell value
             assert!(!cell.error);
@@ -1069,12 +1071,12 @@ mod spreadsheet_tests {
         sheet.spreadsheet_set_cell_value(1, 2, copy_expr, &mut status);
         // B1 should have value of A1 . B2 should have value of A2 . B3 should have value of A3...and so on. and formula of them should be None
         assert_eq!(status, "ok");
-        let b1_idx = 0 * 10 + 1;
+        let b1_idx =  1;
         if let Some(cell) = sheet.cells[b1_idx].as_ref() {
             assert_eq!(cell.value, 42); // B1 should have value of A1
             assert_eq!(cell.formula, ParsedRHS::SingleValue(Operand::Number(42)));
         }
-        let b2_idx = 1 * 10 + 1;
+        let b2_idx = 10 + 1;
         if let Some(cell) = sheet.cells[b2_idx].as_ref() {
             assert_eq!(cell.value, 42); // B2 should have value of A2
             assert_eq!(cell.formula, ParsedRHS::SingleValue(Operand::Number(42)));
@@ -1634,9 +1636,9 @@ mod spreadsheet_tests {
 
         // Setup test data in A1-A5
         let vals = [10, 20, 30, 40, 50];
-        for i in 0..5 {
+        for (i,m) in vals.iter().enumerate() {
             let row = i + 1;
-            let expr = ParsedRHS::SingleValue(Operand::Number(vals[i]));
+            let expr = ParsedRHS::SingleValue(Operand::Number(*m));
             sheet.spreadsheet_set_cell_value(row as i16, 1, expr, &mut status);
             assert_eq!(status, "ok");
         }
@@ -1652,7 +1654,7 @@ mod spreadsheet_tests {
         sheet.spreadsheet_set_cell_value(1, 2, sum_expr, &mut status); // B1
         assert_eq!(status, "ok");
 
-        let b1_idx = 0 * 10 + 1;
+        let b1_idx =  1;
         if let Some(cell) = sheet.cells[b1_idx].as_ref() {
             assert_eq!(cell.value, 150); // 10+20+30+40+50
             assert!(!cell.error);
@@ -1669,7 +1671,7 @@ mod spreadsheet_tests {
         sheet.spreadsheet_set_cell_value(2, 2, avg_expr, &mut status); // B2
         assert_eq!(status, "ok");
 
-        let b2_idx = 1 * 10 + 1;
+        let b2_idx = 10 + 1;
         if let Some(cell) = sheet.cells[b2_idx].as_ref() {
             assert_eq!(cell.value, 30); // (10+20+30+40+50)/5
             assert!(!cell.error);
@@ -1766,7 +1768,7 @@ mod spreadsheet_tests {
         assert_eq!(status, "ok");
 
         // Verify error state
-        let a1_idx = 0 * 10 + 0;
+        let a1_idx = 0;
         if let Some(cell) = sheet.cells[a1_idx].as_ref() {
             assert!(cell.error);
         }
@@ -1777,7 +1779,7 @@ mod spreadsheet_tests {
         assert_eq!(status, "ok");
 
         // Check error propagation
-        let a2_idx = 1 * 10 + 0;
+        let a2_idx = 10 ;
         if let Some(cell) = sheet.cells[a2_idx].as_ref() {
             assert!(cell.error);
         }
@@ -1792,7 +1794,7 @@ mod spreadsheet_tests {
         assert_eq!(status, "ok");
 
         // Check error propagation
-        let a3_idx = 2 * 10 + 0;
+        let a3_idx = 2 * 10 ;
         if let Some(cell) = sheet.cells[a3_idx].as_ref() {
             assert!(cell.error);
         }
@@ -1809,7 +1811,7 @@ mod spreadsheet_tests {
         assert_eq!(status, "ok");
 
         // Check error propagation
-        let a4_idx = 3 * 10 + 0;
+        let a4_idx = 3 * 10 ;
         if let Some(cell) = sheet.cells[a4_idx].as_ref() {
             assert!(cell.error);
         }
@@ -1823,10 +1825,10 @@ mod spreadsheet_tests {
         let mut sheet = Spreadsheet::spreadsheet_create(10, 10).unwrap();
 
         // Setup cells with various values and error states
-        let a1_idx = 0 * 10 + 0; // A1
-        let a2_idx = 1 * 10 + 0; // A2
-        let b1_idx = 0 * 10 + 1; // B1
-        let b2_idx = 1 * 10 + 1; // B2
+        let a1_idx =  0; // A1
+        let a2_idx =10 ; // A2
+        let b1_idx =  1; // B1
+        let b2_idx = 10 + 1; // B2
 
         if let Some(cell) = sheet.cells[a1_idx].as_mut() {
             cell.value = 42;
@@ -1875,7 +1877,6 @@ mod spreadsheet_tests {
         // spreadsheet_display to accept a writer parameter.
 
         // For now, this test just ensures the function runs without panicking
-        assert!(true);
     }
 
     #[test]
@@ -1888,7 +1889,7 @@ mod spreadsheet_tests {
             for c in 1..=20 {
                 let index = (r - 1) as usize * 20 + (c - 1) as usize;
                 if let Some(cell) = sheet.cells[index].as_mut() {
-                    cell.value = (r * 100 + c) as i32;
+                    cell.value = r * 100 + c ;
                 }
             }
         }
@@ -2035,4 +2036,4 @@ mod spreadsheet_tests {
     }
 }
 
-fn main() {}
+
