@@ -324,6 +324,44 @@
             const modal = document.getElementById("graph-modal");
             const closeModal = document.getElementById("close-modal");
 
+            // Add version tracking for conflict management
+            let currentVersion = 0;
+            let isPolling = true;
+
+            // Start polling for updates
+            startPolling();
+
+            // Function to start polling for sheet changes
+            function startPolling() {
+                if (isPolling) {
+                    pollForChanges();
+                    setInterval(pollForChanges, 3000); // Check every 3 seconds
+                }
+            }
+
+            // Poll server for sheet changes
+            async function pollForChanges() {
+                try {
+                    const response = await fetch('/api/sheet_status');
+                    const status = await response.json();
+
+                    // If server version is newer than our version, refresh
+                    if (status.version > currentVersion && currentVersion > 0) {
+                        // Refresh the sheet to show updates from other users
+                        displayBar.textContent = "Sheet has been updated by another user. Refreshing...";
+                        await fetchSheetData();
+
+                        // Update our version to match server
+                        currentVersion = status.version;
+                    } else if (currentVersion === 0) {
+                        // Initialize version on first load
+                        currentVersion = status.version;
+                    }
+                } catch (error) {
+                    console.error('Error polling for changes:', error);
+                }
+            }
+
             graphButton.addEventListener("click", () => {
                 modal.classList.remove("hidden");
             });
@@ -400,6 +438,15 @@
                 sheetData = await response.json();
                 renderGrid(sheetData.rows, sheetData.cols);
                 updateCellValues(sheetData.cells);
+
+                // Get the latest version after sheet refresh
+                try {
+                    const statusResponse = await fetch('/api/sheet_status');
+                    const status = await statusResponse.json();
+                    currentVersion = status.version;
+                } catch (error) {
+                    console.error('Error fetching sheet version:', error);
+                }
             }
 
             // Render the grid
@@ -509,13 +556,23 @@
                             },
                             body: JSON.stringify({
                                 cell: cellName,
-                                rhs: formula
+                                rhs: formula,
+                                version: currentVersion // Send current version
                             })
                         });
 
                         const result = await response.json();
 
-                        if (result.status === 'ok') {
+                        if (result.status.startsWith('Conflict:')) {
+                            // Handle version conflict
+                            displayBar.textContent = result.status;
+                            if (result.needs_refresh) {
+                                await fetchSheetData(); // Refresh to get latest data
+                            }
+                        } else {
+                            // Update was successful
+                            currentVersion = result.version; // Update our version
+
                             // Refresh the sheet to show all updates
                             fetchSheetData();
 
@@ -529,13 +586,21 @@
 
                             // Clear the formula bar
                             formulaBar.value = '';
-                        } else {
-                            alert(`Error: ${result.status}`);
-                        }
+                        } 
                     } catch (error) {
                         console.error('Error updating cell:', error);
                         alert('Failed to update cell');
                     }
+                }
+            });
+
+            // Add visibility change handler to pause/resume polling when tab is hidden/visible
+            document.addEventListener('visibilitychange', function () {
+                if (document.hidden) {
+                    isPolling = false;
+                } else {
+                    isPolling = true;
+                    startPolling();
                 }
             });
 

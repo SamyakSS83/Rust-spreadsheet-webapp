@@ -259,6 +259,8 @@ This application is a complete rewrite of a legacy spreadsheet tool from C to Ru
 */
 
 // Re-export all modules so they appear in the documentation
+#[cfg(feature = "web")]
+pub mod app;
 pub mod cell;
 pub mod downloader;
 pub mod graph;
@@ -266,8 +268,6 @@ pub mod login;
 pub mod mailer;
 pub mod saving;
 pub mod spreadsheet;
-#[cfg(feature = "web")]
-pub mod app;
 
 /// Re-export everything from these modules to make it easier to use
 pub use cell::*;

@@ -10,6 +10,7 @@ use axum::{
     routing::{get, post},
 };
 use axum_extra::extract::cookie::CookieJar;
+use local_ip_address::local_ip;  // Add this import
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -43,6 +44,12 @@ pub struct AppState {
     /// A set of publicly accessible spreadsheets, identified by their paths
     /// Format: "username/sheetname"
     pub public_sheets: Mutex<HashSet<String>>,
+    
+    /// Version counter for conflict management
+    pub version: Mutex<u64>,
+    
+    /// Last modified timestamp
+    pub last_modified: Mutex<std::time::SystemTime>,
 }
 
 /// Data structure for cell updates from the client
@@ -52,6 +59,8 @@ struct CellUpdate {
     rhs: String,
     /// The cell identifier (e.g., "A1", "B2")
     cell: String,
+    /// Client's version of the sheet (for conflict detection)
+    version: Option<u64>,
 }
 
 /// Response data structure for cell updates
@@ -61,6 +70,10 @@ struct CellResponse {
     status: String,
     /// The calculated cell value (if successful)
     value: Option<i32>,
+    /// Current version of the sheet after update
+    version: u64,
+    /// Whether the client needs to refresh due to conflict
+    needs_refresh: bool,
 }
 
 /// Query parameters for saving a spreadsheet
@@ -128,6 +141,15 @@ struct ChangeStatusForm {
     status: String,
 }
 
+/// Response structure for sheet status
+#[derive(Serialize)]
+struct SheetStatusResponse {
+    /// Current version of the sheet
+    version: u64,
+    /// Last modified time as timestamp
+    last_modified: u64,
+}
+
 /// Main application entry point
 ///
 /// Initializes the database, creates the default spreadsheet, and starts the web server.
@@ -151,6 +173,8 @@ pub async fn run(rows: i16, cols: i16) -> Result<(), Box<dyn std::error::Error>>
         sheet: Mutex::new(sheet),
         original_path: Mutex::new(None),
         public_sheets: Mutex::new(HashSet::new()),
+        version: Mutex::new(0), // Initialize version to 0
+        last_modified: Mutex::new(std::time::SystemTime::now()),
     });
 
     // 1) Build the public (no‐auth) routes
@@ -182,7 +206,9 @@ pub async fn run(rows: i16, cols: i16) -> Result<(), Box<dyn std::error::Error>>
         // Add these API endpoints to public routes for public sheets
         .route("/api/sheet", get(get_sheet_data))
         .route("/api/cell/:cell_name", get(get_cell))
+        .route("/api/update_cell", post(update_cell))
         .route("/api/sheet_info", get(get_sheet_info))
+        .route("/api/sheet_status", get(get_sheet_status))
         .nest_service("/static", ServeDir::new("static"));
 
     // 2) Build the protected routes and apply auth‐middleware
@@ -192,7 +218,6 @@ pub async fn run(rows: i16, cols: i16) -> Result<(), Box<dyn std::error::Error>>
         // .route("/api/sheet", get(get_sheet_data))
         // .route("/api/cell/:cell_name", get(get_cell))
         // .route("/api/sheet_info", get(get_sheet_info))
-        .route("/api/update_cell", post(update_cell))
         .route("/api/save", post(save_spreadsheet))
         .route("/api/export", post(export_spreadsheet))
         .route("/api/load", post(load_spreadsheet))
@@ -222,7 +247,9 @@ pub async fn run(rows: i16, cols: i16) -> Result<(), Box<dyn std::error::Error>>
 
     // Start server
     let listener = TcpListener::bind("0.0.0.0:3000").await?;
-    println!("Listening on http://127.0.0.1:3000");
+    let local_ip = local_ip().unwrap_or_else(|_| "127.0.0.1".parse().unwrap());
+    println!("Listening on http://{}:3000", local_ip);
+
     axum::serve(listener, app).await?;
 
     Ok(())
@@ -387,66 +414,149 @@ async fn get_cell(
 ///
 /// # Arguments
 /// * `state` - Application state containing the spreadsheet
+/// * `jar` - Cookie jar containing session information
 /// * `payload` - Cell update data including the cell name and formula/value
 ///
 /// # Returns
 /// * JSON response with update status and the new cell value
 async fn update_cell(
     State(state): State<Arc<AppState>>,
+    jar: CookieJar, // Added for session check
     Json(payload): Json<CellUpdate>,
 ) -> impl IntoResponse {
-    // println!("(DEBUG) Received update_cell payload: {:?}", payload);
+    // Get the current sheet path to check permissions
+    let original_path = state.original_path.lock().unwrap().clone();
+    
+    // Check permission for editing if not logged in or not owner
+    if let Some(path) = &original_path {
+        // Extract username/sheet_name from path "database/username/sheet_name.bin.gz"
+        let path_parts: Vec<&str> = path.split('/').collect();
+        if path_parts.len() >= 3 {
+            let username = path_parts[1];
+            let sheet_name = path_parts[2].trim_end_matches(".bin.gz");
+            
+            // Get current user from session cookie
+            let current_user = jar
+                .get("session")
+                .and_then(|cookie| crate::login::validate_session(cookie.value()));
+            
+            let is_owner = current_user.as_deref() == Some(username);
+            
+            // If not owner, check if sheet is public
+            if !is_owner {
+                let public_sheets = state.public_sheets.lock().unwrap();
+                let sheet_key = format!("{}/{}", username, sheet_name);
+                
+                // If it's not in public sheets, return unauthorized
+                if !public_sheets.contains(&sheet_key) {
+                    return (StatusCode::UNAUTHORIZED, "Not authorized to edit this sheet").into_response();
+                }
+            }
+        }
+    }
+    
+    // Check for version conflicts
+    let mut current_version = state.version.lock().unwrap();
+    let client_version = payload.version.unwrap_or(0);
+    
+    // If client has an outdated version, notify them to refresh
+    if client_version < *current_version {
+        return Json(CellResponse {
+            status: "Conflict: sheet has been modified".to_string(),
+            value: None,
+            version: *current_version,
+            needs_refresh: true,
+        })
+        .into_response();
+    }
+    
+    // Continue with update logic
     let mut sheet = state.sheet.lock().unwrap();
     let mut status = String::new();
+    let mut was_updated = false;
 
-    // Parse the cell name
+    // Parse the cell name and update the cell (same as before)
     if let Some((row, col)) = sheet.spreadsheet_parse_cell_name(&payload.cell) {
-        // println!("(DEBUG) Parsed cell name: row={}, col={}", row, col);
-
-        // Parse the formula string into ParsedRHS using is_valid_command
         let (is_valid, _, _, parsed_rhs) = sheet.is_valid_command(&payload.cell, &payload.rhs);
 
         if is_valid {
-            // println!("(DEBUG) Valid formula parsed: {:?}", parsed_rhs);
+            // Store the current value before updating
+            let current_value = {
+                let index = ((row - 1) * sheet.cols + (col - 1)) as usize;
+                sheet.cells.get(index).and_then(|c| c.as_ref()).map(|c| c.value)
+            };
+            
+            // Update the cell
             sheet.spreadsheet_set_cell_value(row, col, parsed_rhs, &mut status);
+            
+            // Check if value actually changed
+            let new_value = {
+                let index = ((row - 1) * sheet.cols + (col - 1)) as usize;
+                sheet.cells.get(index).and_then(|c| c.as_ref()).map(|c| c.value)
+            };
+            
+            // If value changed
+            if current_value != new_value {
+                was_updated = true;
+                
+                // Increment version
+                *current_version += 1;
+                
+                // Update last modified time
+                *state.last_modified.lock().unwrap() = std::time::SystemTime::now();
+            }
         } else {
             status = format!("Invalid formula: {}", payload.rhs);
-            // println!("(DEBUG) {}", status);
         }
     } else {
         status = format!("Invalid cell identifier: {}", payload.cell);
-        // println!("(DEBUG) {}", status);
     }
 
-    // Retrieve the updated cell value and print its state
+    // Auto-save if the sheet was updated
+    if was_updated {
+        if let Some(path) = &original_path {
+            // Create a clone of the sheet for saving to avoid deadlocks
+            let sheet_clone = {
+                let sheet_ref = &*sheet;
+                bincode::serialize(sheet_ref).ok().and_then(|data| bincode::deserialize(&data).ok())
+            };
+            
+            if let Some(sheet_to_save) = sheet_clone {
+                // Spawn a task to save in the background to avoid blocking
+                let path_clone = path.clone();
+                tokio::spawn(async move {
+                    let _ = saving::save_spreadsheet(&sheet_to_save, &path_clone);
+                });
+            }
+        }
+    }
+
+    // Prepare response with current cell value and version
     if let Some((row, col)) = sheet.spreadsheet_parse_cell_name(&payload.cell) {
         let index = ((row - 1) * sheet.cols + (col - 1)) as usize;
-        if let Some(cell) = &sheet.cells[index] {
-            // println!(
-            //     "(DEBUG) Final state of cell {}: value = {}, formula = {:?}, error = {}",
-            //     payload.cell, cell.value, cell.formula, cell.error
-            // );
+        if let Some(cell) = &sheet.cells.get(index).and_then(|c| c.as_ref()) {
             Json(CellResponse {
                 status,
                 value: Some(cell.value),
+                version: *current_version,
+                needs_refresh: false,
             })
             .into_response()
         } else {
-            // println!("(DEBUG) Missing cell at index {}", index);
             Json(CellResponse {
                 status: "Cell not found".into(),
                 value: None,
+                version: *current_version,
+                needs_refresh: false,
             })
             .into_response()
         }
     } else {
-        // println!(
-        //     "(DEBUG) Second parsing of cell identifier failed for '{}'",
-        //     payload.cell
-        // );
         Json(CellResponse {
             status,
             value: None,
+            version: *current_version,
+            needs_refresh: false,
         })
         .into_response()
     }
@@ -605,7 +715,7 @@ async fn load_user_file(
 
     // If not owner, check if the sheet is public.
     let mut is_public = false;
-    if !is_owner {
+    if (!is_owner) {
         let list_path = format!("database/{}/list.json", username);
         if let Ok(data) = std::fs::read_to_string(&list_path) {
             if let Ok(entries) = serde_json::from_str::<Vec<crate::login::SheetEntry>>(&data) {
@@ -709,7 +819,7 @@ async fn change_sheet_status(
     }
 
     // If not found, add a new entry
-    if !found {
+    if (!found) {
         entries.push(SheetEntry {
             name: filename,
             status: form.status,
@@ -1046,4 +1156,21 @@ async fn get_sheet_info(State(state): State<Arc<AppState>>) -> impl IntoResponse
         "is_loaded": original_path.is_some(),
         "original_path": original_path.clone().unwrap_or_default(),
     }))
+}
+
+/// Get current sheet version and last modified timestamp
+/// Clients can poll this endpoint to detect when they need to refresh
+async fn get_sheet_status(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let version = *state.version.lock().unwrap();
+    
+    // Convert SystemTime to timestamp
+    let last_modified = state.last_modified.lock().unwrap()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    
+    Json(SheetStatusResponse {
+        version,
+        last_modified,
+    })
 }
