@@ -18,8 +18,7 @@ use std::error::Error;
 /// * `Result<String, Box<dyn Error>>` - CSV content as a string or an error
 ///
 /// # Examples
-/// ```
-/// use cop::spreadsheet::Spreadsheet;
+/// ```use cop::spreadsheet::Spreadsheet;
 /// use cop::downloader::to_csv;
 ///
 /// let sheet = Spreadsheet::spreadsheet_create(5, 5).unwrap();
@@ -77,8 +76,7 @@ pub fn to_csv(sheet: &Spreadsheet) -> Result<String, Box<dyn Error>> {
 /// * `Result<Vec<u8>, Box<dyn Error>>` - XLSX file content as bytes or an error
 ///
 /// # Examples
-/// ```
-/// use cop::spreadsheet::Spreadsheet;
+/// ```use cop::spreadsheet::Spreadsheet;
 /// use cop::downloader::to_xlsx;
 ///
 /// let sheet = Spreadsheet::spreadsheet_create(5, 5).unwrap();
@@ -124,8 +122,7 @@ pub fn to_xlsx(sheet: &Spreadsheet) -> Result<Vec<u8>, Box<dyn Error>> {
 /// * `String` - Column letter (A, B, C, etc.)
 ///
 /// # Examples
-/// ```
-/// use cop::downloader::column_to_letter;
+/// ```use cop::downloader::column_to_letter;
 ///
 /// assert_eq!(column_to_letter(1), "A");
 /// assert_eq!(column_to_letter(26), "Z");

@@ -115,8 +115,7 @@ impl Spreadsheet {
     /// * `None` - If creation failed (should not occur under normal circumstances)
     ///
     /// # Example
-    /// ```
-    /// let sheet = Spreadsheet::spreadsheet_create(10, 10).unwrap();
+    /// ```  let sheet = Spreadsheet::spreadsheet_create(10, 10).unwrap();
     /// assert_eq!(sheet.rows, 10);
     /// assert_eq!(sheet.cols, 10);
     /// ```
@@ -156,8 +155,7 @@ impl Spreadsheet {
     /// A string representing the column letter(s)
     ///
     /// # Example
-    /// ```
-    /// assert_eq!(Spreadsheet::col_to_letter(1), "A");
+    /// ``` assert_eq!(Spreadsheet::col_to_letter(1), "A");
     /// assert_eq!(Spreadsheet::col_to_letter(26), "Z");
     /// assert_eq!(Spreadsheet::col_to_letter(27), "AA");
     /// ```
@@ -184,8 +182,7 @@ impl Spreadsheet {
     /// The column number (1-based)
     ///
     /// # Example
-    /// ```
-    /// assert_eq!(Spreadsheet::letter_to_col("A"), 1);
+    /// ``` assert_eq!(Spreadsheet::letter_to_col("A"), 1);
     /// assert_eq!(Spreadsheet::letter_to_col("Z"), 26);
     /// assert_eq!(Spreadsheet::letter_to_col("AA"), 27);
     /// ```
@@ -208,8 +205,7 @@ impl Spreadsheet {
     /// A string containing the formatted cell name
     ///
     /// # Example
-    /// ```
-    /// assert_eq!(Spreadsheet::get_cell_name(1, 1), "A1");
+    /// ```assert_eq!(Spreadsheet::get_cell_name(1, 1), "A1");
     /// assert_eq!(Spreadsheet::get_cell_name(10, 2), "B10");
     /// ```
     pub fn get_cell_name(row: i16, col: i16) -> String {
@@ -230,8 +226,7 @@ impl Spreadsheet {
     /// * `None` - If the cell name is invalid or refers to a cell outside the spreadsheet
     ///
     /// # Example
-    /// ```
-    /// let sheet = Spreadsheet::spreadsheet_create(10, 10).unwrap();
+    /// ```let sheet = Spreadsheet::spreadsheet_create(10, 10).unwrap();
     /// assert_eq!(sheet.spreadsheet_parse_cell_name("A1"), Some((1, 1)));
     /// assert_eq!(sheet.spreadsheet_parse_cell_name("B10"), Some((10, 2)));
     /// assert_eq!(sheet.spreadsheet_parse_cell_name("K11"), None); // Outside dimensions
@@ -280,8 +275,7 @@ impl Spreadsheet {
     /// `true` if the string contains only digits, `false` otherwise
     ///
     /// # Example
-    /// ```
-    /// assert!(Spreadsheet::is_numeric("123"));
+    /// ```assert!(Spreadsheet::is_numeric("123"));
     /// assert!(!Spreadsheet::is_numeric("12a"));
     /// assert!(!Spreadsheet::is_numeric(""));
     /// ```
@@ -988,8 +982,7 @@ impl Spreadsheet {
     /// * The parsed formula
     ///
     /// # Example
-    /// ```
-    /// let sheet = Spreadsheet::spreadsheet_create(10, 10).unwrap();
+    /// ```let sheet = Spreadsheet::spreadsheet_create(10, 10).unwrap();
     /// let (valid, row, col, formula) = sheet.is_valid_command("A1", "10");
     /// assert!(valid);
     /// assert_eq!(row, 1);

@@ -58,8 +58,7 @@ impl Cell {
     /// - dependents: None
     ///
     /// # Example
-    /// ```
-    /// let cell = Cell::create(1, 1);
+    /// ```let cell = Cell::create(1, 1);
     /// assert_eq!(cell.row, 1);
     /// assert_eq!(cell.col, 1);
     /// assert_eq!(cell.value, 0);
@@ -191,8 +190,7 @@ impl Cell {
 /// A boxed Cell for use with external API calls
 ///
 /// # Example
-/// ```
-/// let cell = cell_create(1, 1);
+/// ```let cell = cell_create(1, 1);
 /// assert_eq!(cell.row, 1);
 /// assert_eq!(cell.col, 1);
 /// ```
@@ -211,8 +209,7 @@ pub fn cell_create(row: i16, col: i16) -> Box<Cell> {
 /// * `col` - Column of the dependent cell (the cell that depends on `cell`)
 ///
 /// # Example
-/// ```
-/// let mut cell_a1 = cell_create(1, 1);
+/// ```let mut cell_a1 = cell_create(1, 1);
 /// // Record that B2 depends on A1
 /// cell_dep_insert(&mut cell_a1, 2, 2);
 /// ```
@@ -231,8 +228,7 @@ pub fn cell_dep_insert(cell: &mut Cell, row: i16, col: i16) {
 /// * `col` - Column of the no-longer-dependent cell
 ///
 /// # Example
-/// ```
-/// let mut cell_a1 = cell_create(1, 1);
+/// ```let mut cell_a1 = cell_create(1, 1);
 /// // Record that B2 no longer depends on A1
 /// cell_dep_remove(&mut cell_a1, 2, 2);
 /// ```
@@ -253,8 +249,7 @@ pub fn cell_dep_remove(cell: &mut Cell, row: i16, col: i16) {
 /// `true` if the specified cell depends on the given cell, `false` otherwise
 ///
 /// # Example
-/// ```
-/// let mut cell_a1 = cell_create(1, 1);
+/// ```let mut cell_a1 = cell_create(1, 1);
 /// cell_dep_insert(&mut cell_a1, 2, 2);
 /// assert!(cell_contains(&cell_a1, 2, 2));
 /// assert!(!cell_contains(&cell_a1, 3, 3));
