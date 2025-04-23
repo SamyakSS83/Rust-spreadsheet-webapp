@@ -651,7 +651,23 @@
                         // console.log("Formula bar updated with:", newValue);
                         newValue = newValue.substring(1);
                         // console.log("Formula bar updated with:", newValue);
-
+                        
+                    }
+                    console.log("Processing value:", newValue);
+                    const regex = /^(SUM|MIN|MAX|AVG|STDEV|COPY)([A-Z]{1,3}\d{1,3})([A-Z]{1,3}\d{1,3})$/i;
+                    const match = newValue.match(regex);
+                    console.log("Regex match result:", match);
+                    if (match) {
+                        // Extract and convert to uppercase
+                        const func = match[1].toUpperCase();
+                        const cell1 = match[2].toUpperCase();
+                        const cell2 = match[3].toUpperCase();
+                        let range = getCellRangeNotation(cell1, cell2);
+                        console.log("Range notation:", range);
+                        console.log("Extracted values:", { func, cell1, cell2 });
+                        // Rebuild the formula string as FUNCTION(cell1:cell2)
+                        newValue = `${func}(${range})`;
+                        console.log("New formula:", newValue);
                     }
                     // Submit the value to the server
                     submitCellValue(cell.dataset.name, newValue);
@@ -660,6 +676,7 @@
 
             // Submit a cell value to the server
             async function submitCellValue(cellName, formula) {
+                console.log("Submitting value:", formula);
                 try {
                     const response = await fetch('/api/update_cell', {
                         method: 'POST',
@@ -790,6 +807,28 @@
 
             // Enhance keyboard navigation to handle direct editing
             document.addEventListener('keydown', function (e) {
+                if (e.ctrlKey && e.key.toLowerCase() === 'z') {
+                    e.preventDefault();
+                    // Assume the undo is handled on the server side.
+                    // If sheetData.undo_stack is empty, show "no undo".
+                    // Otherwise, call the /api/undo endpoint.
+                    if (!sheetData || !sheetData.undo_stack || sheetData.undo_stack.length === 0) {
+                        displayBar.textContent = "no undo";
+                    } else {
+                        fetch('/api/undo', { method: 'POST' })
+                            .then(response => response.json())
+                            .then(data => {
+                                displayBar.textContent = data.status;
+                                fetchSheetData(); // refresh the grid
+                            })
+                            .catch(error => {
+                                console.error("Undo error:", error);
+                                displayBar.textContent = "Error performing undo";
+                            });
+                    }
+                    return;
+                }
+
                 if (isFormulaBuildMode) {
                     if (e.key === 'Enter') {
                         // Finish building formula
@@ -1322,35 +1361,58 @@
                 });
             }
             
-            // Function to get A1:B2 style notation for a range
-            function getCellRangeNotation(startCell, endCell) {
-                if (!startCell || !endCell) return '';
-                
-                // Get the coordinates
-                const startRow = parseInt(startCell.dataset.row);
-                const startCol = parseInt(startCell.dataset.col);
-                const endRow = parseInt(endCell.dataset.row);
-                const endCol = parseInt(endCell.dataset.col);
-                
-                // Determine the actual top-left and bottom-right cells
-                const topRow = Math.min(startRow, endRow);
-                const bottomRow = Math.max(startRow, endRow);
-                const leftCol = Math.min(startCol, endCol);
-                const rightCol = Math.max(startCol, endCol);
-                
-                // Get the cell reference for top-left cell
-                const topLeftRef = document.querySelector(
-                    `.cell[data-row="${topRow}"][data-col="${leftCol}"]`
-                )?.dataset.name;
-                
-                // Get the cell reference for bottom-right cell
-                const bottomRightRef = document.querySelector(
-                    `.cell[data-row="${bottomRow}"][data-col="${rightCol}"]`
-                )?.dataset.name;
-                
-                return `${topLeftRef}:${bottomRightRef}`;
+            // Helper function to convert a cell name (e.g. "B2") into coordinates {row, col}
+            function cellNameToCoordinates(cellName) {
+                const match = cellName.match(/^([A-Z]+)(\d+)$/);
+                if (!match) return null;
+                const letters = match[1];
+                const row = parseInt(match[2]);
+                let col = 0;
+                for (let i = 0; i < letters.length; i++) {
+                    col = col * 26 + (letters.charCodeAt(i) - 64); // 'A' is 65 so A=1
+                }
+                return { row, col };
             }
-            
+
+            // Updated getCellRangeNotation function accepts either DOM elements or cell name strings.
+            function getCellRangeNotation(start, end) {
+                let startCoords, endCoords;
+                
+                // If start is a string, derive coordinates from it; otherwise from its dataset
+                if (typeof start === 'string') {
+                    startCoords = cellNameToCoordinates(start);
+                } else {
+                    startCoords = {
+                        row: parseInt(start.dataset.row),
+                        col: parseInt(start.dataset.col)
+                    };
+                }
+                
+                // Same for the end parameter
+                if (typeof end === 'string') {
+                    endCoords = cellNameToCoordinates(end);
+                } else {
+                    endCoords = {
+                        row: parseInt(end.dataset.row),
+                        col: parseInt(end.dataset.col)
+                    };
+                }
+                
+                if (!startCoords || !endCoords) return '';
+                
+                // Determine the actual top-left and bottom-right cells.
+                const topRow = Math.min(startCoords.row, endCoords.row);
+                const bottomRow = Math.max(startCoords.row, endCoords.row);
+                const leftCol = Math.min(startCoords.col, endCoords.col);
+                const rightCol = Math.max(startCoords.col, endCoords.col);
+                
+                // Convert the column numbers back to letters using your existing function.
+                const topLeft = columnToLetter(leftCol) + topRow;
+                const bottomRight = columnToLetter(rightCol) + bottomRow;
+                
+                return `${topLeft}:${bottomRight}`;
+            }
+
             // Function to update the formula with the current range
             function updateFunctionFormula() {
                 if (!functionMode || !rangeStartCell || !rangeEndCell) return;
@@ -1367,3 +1429,4 @@
 </body>
 
 </html>
+``` 

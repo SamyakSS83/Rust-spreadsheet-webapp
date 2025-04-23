@@ -19,7 +19,7 @@ use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
-
+// use actix_web::post;
 use crate::downloader;
 use crate::graph::{GraphOptions, GraphType, create_graph};
 use crate::login::{
@@ -216,6 +216,7 @@ pub async fn run(rows: i16, cols: i16) -> Result<(), Box<dyn std::error::Error>>
         .route("/api/download/csv", get(download_csv))
         .route("/api/download/xlsx", get(download_xlsx))
         .route("/api/sheet_status", get(get_sheet_status))
+        .route("/api/undo", get(undo).post(undo))
         .nest_service("/static", ServeDir::new("static"));
 
     // 2) Build the protected routes and apply auth‐middleware
@@ -1185,4 +1186,28 @@ async fn get_sheet_status(State(state): State<Arc<AppState>>) -> impl IntoRespon
         version,
         last_modified,
     })
+}
+
+/// Add an endpoint for undo
+async fn undo(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let mut sheet = state.sheet.lock().unwrap();
+    let mut status = String::new();
+    // Call your spreadsheet's undo method
+    if sheet.undo_stack.is_empty() {
+        status = String::from("no undo");
+    } else {
+        sheet.spreadsheet_undo(&mut status);
+    }
+
+    // Increment version if needed, update last modified, etc.
+    {
+        let mut version = state.version.lock().unwrap();
+        *version += 1;
+        *state.last_modified.lock().unwrap() = std::time::SystemTime::now();
+    }
+
+    Json(serde_json::json!({
+        "status": status,
+        "version": *state.version.lock().unwrap()
+    }))
 }
