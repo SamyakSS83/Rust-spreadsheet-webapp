@@ -759,10 +759,22 @@
                               result.status.includes("circular") || 
                               result.status.includes("invalid command") || 
                               result.status.includes("Invalid") || 
-                              result.status.includes("error")) {
-                        // Show error pop-up for specific error types
-                        showErrorPopup(result.status);
-                        // Still update display bar
+                              result.status.includes("Error")) {
+                        
+                        // Show simple alert instead of modal popup
+                        alert(result.status);
+                        
+                        // Clear the incorrect formula from the cell
+                        const cellElement = document.querySelector(`.cell[data-name="${cellName}"]`);
+                        if (cellElement) {
+                            // Reset to previous valid value
+                            await fetchSheetData(); // Refresh to get the last valid state
+                            
+                            // Clear the formula bar as well
+                            formulaBar.value = '';
+                        }
+                        
+                        // Update display bar with the error
                         displayBar.textContent = result.status;
                     } else {
                         // Update was successful
@@ -779,7 +791,7 @@
                     }
                 } catch (error) {
                     console.error('Error updating cell:', error);
-                    showErrorPopup(`Error updating cell: ${error.message}`);
+                    alert(`Error updating cell: ${error.message}`);
                     displayBar.textContent = `Error updating cell: ${error.message}`;
                 }
             }
