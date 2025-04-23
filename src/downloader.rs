@@ -3,6 +3,8 @@
 use crate::spreadsheet::Spreadsheet;
 use std::error::Error;
 
+#[cfg(feature = "web")]
+use crate::spreadsheet::{ParsedRHS,Operand, FunctionName};
 /// Convert spreadsheet to CSV format
 ///
 /// This function exports a spreadsheet to CSV (Comma-Separated Values) format.
@@ -98,17 +100,101 @@ pub fn to_xlsx(sheet: &Spreadsheet) -> Result<Vec<u8>, Box<dyn Error>> {
         for c in 1..=sheet.cols {
             let index = ((r - 1) * sheet.cols + (c - 1)) as usize;
             if let Some(cell) = &sheet.cells[index] {
-                worksheet.write_number((r - 1) as u32, (c - 1) as u16, cell.value)?;
+                // Check if the cell has a formula
+                match &cell.formula {
+                    ParsedRHS::Function { name, args: (arg1, arg2) } => {
+                        // Convert our internal formula to Excel formula syntax
+                        let excel_formula = match name {
+                            FunctionName::Sum => format!("=SUM({cell_range})", 
+                                cell_range = convert_range_to_excel(arg1, arg2)),
+                            FunctionName::Min => format!("=MIN({cell_range})", 
+                                cell_range = convert_range_to_excel(arg1, arg2)),
+                            FunctionName::Max => format!("=MAX({cell_range})", 
+                                cell_range = convert_range_to_excel(arg1, arg2)),
+                            FunctionName::Avg => format!("=AVERAGE({cell_range})", 
+                                cell_range = convert_range_to_excel(arg1, arg2)),
+                            FunctionName::Stdev => format!("=STDEV({cell_range})", 
+                                cell_range = convert_range_to_excel(arg1, arg2)),
+                            // For COPY function, just write the value since Excel doesn't have a direct equivalent
+                            FunctionName::Copy => {
+                                // worksheet.write_number((r - 1) as u32, (c - 1) as u16, cell.value)?;
+                                continue;
+                            }
+                            
+                        };
+                        
+                        // Use as_str() to convert String to &str
+                        worksheet.write_formula((r - 1) as u32, (c - 1) as u16, excel_formula.as_str())?;
+                        worksheet.write_number((r - 1) as u32, (c - 1) as u16, cell.value)?;
+
+                    },
+                    ParsedRHS::Arithmetic { lhs, operator, rhs } => {
+                        // Convert arithmetic to Excel formula
+                        let left = operand_to_excel_ref(lhs);
+                        let right = operand_to_excel_ref(rhs);
+                        let excel_formula = format!("={}{}{}",  left, operator, right);
+                        
+                        // Use as_str() to convert String to &str
+                        worksheet.write_formula((r - 1) as u32, (c - 1) as u16, excel_formula.as_str())?;
+                        worksheet.write_number((r - 1) as u32, (c - 1) as u16, cell.value)?;
+
+                    },
+                    ParsedRHS::SingleValue(operand) => {
+                        match operand {
+                            Operand::Cell(ref_row, ref_col) => {
+                                // Cell reference
+                                let cell_ref = format!("={}", Spreadsheet::get_cell_name(*ref_row, *ref_col));
+                                // Use as_str() to convert String to &str
+                                worksheet.write_formula((r - 1) as u32, (c - 1) as u16, cell_ref.as_str())?;
+                                worksheet.write_number((r - 1) as u32, (c - 1) as u16, cell.value)?;
+
+                            },
+                            Operand::Number(_) => {
+                                // Simple number
+                                worksheet.write_number((r - 1) as u32, (c - 1) as u16, cell.value)?;
+                            }
+                        }
+                    },
+                    // Handle Sleep or None by just writing the value
+                    _ => {
+                        worksheet.write_number((r - 1) as u32, (c - 1) as u16, cell.value)?;
+                    }
+                }
             }
         }
     }
 
     workbook.push_worksheet(worksheet);
 
-    // Save to memory buffer - corrected method call
+    // Save to memory buffer
     let buffer = workbook.save_to_buffer()?;
 
     Ok(buffer)
+}
+
+#[cfg(feature = "web")]
+// Helper function to convert our operand to Excel reference
+fn operand_to_excel_ref(operand: &Operand) -> String {
+    match operand {
+        Operand::Cell(row, col) => Spreadsheet::get_cell_name(*row, *col),
+        Operand::Number(n) => n.to_string(),
+    }
+}
+
+#[cfg(feature = "web")]
+// Helper function to convert our range representation to Excel range format (A1:B2)
+fn convert_range_to_excel(start: &Operand, end: &Operand) -> String {
+    match (start, end) {
+        (Operand::Cell(start_row, start_col), Operand::Cell(end_row, end_col)) => {
+            format!(
+                "{}:{}",
+                Spreadsheet::get_cell_name(*start_row, *start_col),
+                Spreadsheet::get_cell_name(*end_row, *end_col)
+            )
+        },
+        // Fallback for cases that don't fit the expected pattern
+        _ => String::from("A1")
+    }
 }
 
 /// Convert column number to letter (A=1, B=2, etc.)

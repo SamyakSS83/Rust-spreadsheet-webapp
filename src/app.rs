@@ -500,7 +500,7 @@ async fn update_cell(
 
             // Update the cell
             sheet.spreadsheet_set_cell_value(row, col, parsed_rhs, &mut status);
-            println!("Updated cell {}: {}", payload.cell, status);
+            // println!("Updated cell {}: {}", payload.cell, status);
             // Check if the status indicates an error (e.g., cycle detection)
             if status == "Cycle Detected" {
                 // println!("Error: Circular reference detected");
