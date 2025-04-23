@@ -259,6 +259,23 @@
         .hidden {
             display: none !important;
         }
+
+        .error-modal {
+            z-index: 2000;  /* Ensure it's above other elements */
+        }
+
+        .shake {
+            animation: shake 0.5s;
+        }
+
+        @keyframes shake {
+            0% { transform: translateX(0); }
+            20% { transform: translateX(-10px); }
+            40% { transform: translateX(10px); }
+            60% { transform: translateX(-5px); }
+            80% { transform: translateX(5px); }
+            100% { transform: translateX(0); }
+        }
     </style>
 </head>
 
@@ -327,6 +344,17 @@
         </div>
     </div>
 
+    <div id="error-modal" class="modal hidden">
+        <div class="modal-content" style="max-width: 400px;">
+            <span id="close-error-modal" style="float:right; cursor:pointer;">&times;</span>
+            <h2 style="color: #d32f2f;">Error</h2>
+            <div id="error-message" style="margin: 15px 0; font-size: 16px;"></div>
+            <div style="text-align: right;">
+                <button id="error-ok-button" class="action-button" style="background-color: #d32f2f; color: white;">OK</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             const grid = document.getElementById('grid');
@@ -352,6 +380,35 @@
             let rangeEndCell = null;
             let functionMode = null;
             let selectedRange = [];
+
+            // Error modal handlers
+            const errorModal = document.getElementById('error-modal');
+            const closeErrorModalBtn = document.getElementById('close-error-modal');
+            const errorOkButton = document.getElementById('error-ok-button');
+
+            // Close modal when clicking X
+            closeErrorModalBtn.addEventListener('click', () => {
+                errorModal.classList.add('hidden');
+            });
+
+            // Close modal when clicking OK button
+            errorOkButton.addEventListener('click', () => {
+                errorModal.classList.add('hidden');
+            });
+
+            // Close modal when clicking outside
+            errorModal.addEventListener('click', (e) => {
+                if (e.target === errorModal) {
+                    errorModal.classList.add('hidden');
+                }
+            });
+
+            // Close modal on Escape key
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && !errorModal.classList.contains('hidden')) {
+                    errorModal.classList.add('hidden');
+                }
+            });
 
             // Start polling for updates
             startPolling();
@@ -698,6 +755,15 @@
                         if (result.needs_refresh) {
                             await fetchSheetData();
                         }
+                    } else if (result.status.includes("cycle") || 
+                              result.status.includes("circular") || 
+                              result.status.includes("invalid command") || 
+                              result.status.includes("Invalid") || 
+                              result.status.includes("error")) {
+                        // Show error pop-up for specific error types
+                        showErrorPopup(result.status);
+                        // Still update display bar
+                        displayBar.textContent = result.status;
                     } else {
                         // Update was successful
                         currentVersion = result.version;
@@ -713,8 +779,25 @@
                     }
                 } catch (error) {
                     console.error('Error updating cell:', error);
+                    showErrorPopup(`Error updating cell: ${error.message}`);
                     displayBar.textContent = `Error updating cell: ${error.message}`;
                 }
+            }
+
+            // Function to show error pop-up
+            function showErrorPopup(message) {
+                const errorModal = document.getElementById('error-modal');
+                const errorMessage = document.getElementById('error-message');
+                
+                // Set message content
+                errorMessage.textContent = message;
+                
+                // Show modal with shake animation
+                errorModal.classList.remove('hidden');
+                errorModal.querySelector('.modal-content').classList.add('shake');
+                
+                // Focus the OK button for accessibility
+                document.getElementById('error-ok-button').focus();
             }
 
             // Add double-click handler to enter edit mode
@@ -1429,4 +1512,3 @@
 </body>
 
 </html>
-``` 

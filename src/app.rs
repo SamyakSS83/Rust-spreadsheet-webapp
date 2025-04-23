@@ -451,11 +451,13 @@ async fn update_cell(
 
                 // If it's not in public sheets, return unauthorized
                 if !public_sheets.contains(&sheet_key) {
-                    return (
-                        StatusCode::UNAUTHORIZED,
-                        "Not authorized to edit this sheet",
-                    )
-                        .into_response();
+                    return Json(CellResponse {
+                        status: "Error: Not authorized to edit this sheet".to_string(),
+                        value: None,
+                        version: 0,
+                        needs_refresh: false,
+                    })
+                    .into_response();
                 }
             }
         }
@@ -481,7 +483,7 @@ async fn update_cell(
     let mut status = String::new();
     let mut was_updated = false;
 
-    // Parse the cell name and update the cell (same as before)
+    // Parse the cell name and update the cell
     if let Some((row, col)) = sheet.spreadsheet_parse_cell_name(&payload.cell) {
         let (is_valid, _, _, parsed_rhs) = sheet.is_valid_command(&payload.cell, &payload.rhs);
 
@@ -498,6 +500,17 @@ async fn update_cell(
 
             // Update the cell
             sheet.spreadsheet_set_cell_value(row, col, parsed_rhs, &mut status);
+
+            // Check if the status indicates an error (e.g., cycle detection)
+            if status == "Cycle Detected" {
+                return Json(CellResponse {
+                    status: "Error: Circular reference detected".to_string(),
+                    value: None,
+                    version: *current_version,
+                    needs_refresh: false,
+                })
+                .into_response();
+            }
 
             // Check if value actually changed
             let new_value = {
@@ -520,10 +533,22 @@ async fn update_cell(
                 *state.last_modified.lock().unwrap() = std::time::SystemTime::now();
             }
         } else {
-            status = format!("Invalid formula: {}", payload.rhs);
+            return Json(CellResponse {
+                status: format!("Error: Invalid formula '{}'", payload.rhs),
+                value: None,
+                version: *current_version,
+                needs_refresh: false,
+            })
+            .into_response();
         }
     } else {
-        status = format!("Invalid cell identifier: {}", payload.cell);
+        return Json(CellResponse {
+            status: format!("Error: Invalid cell reference '{}'", payload.cell),
+            value: None,
+            version: *current_version,
+            needs_refresh: false,
+        })
+        .into_response();
     }
 
     // Auto-save if the sheet was updated
@@ -551,8 +576,19 @@ async fn update_cell(
     if let Some((row, col)) = sheet.spreadsheet_parse_cell_name(&payload.cell) {
         let index = ((row - 1) * sheet.cols + (col - 1)) as usize;
         if let Some(cell) = &sheet.cells.get(index).and_then(|c| c.as_ref()) {
+            // Check if the cell has an error flag set
+            if cell.error {
+                return Json(CellResponse {
+                    status: "Error: Invalid calculation result".to_string(),
+                    value: Some(cell.value),
+                    version: *current_version,
+                    needs_refresh: false,
+                })
+                .into_response();
+            }
+
             Json(CellResponse {
-                status,
+                status: "ok".to_string(),
                 value: Some(cell.value),
                 version: *current_version,
                 needs_refresh: false,
@@ -560,7 +596,7 @@ async fn update_cell(
             .into_response()
         } else {
             Json(CellResponse {
-                status: "Cell not found".into(),
+                status: "Error: Cell not found".into(),
                 value: None,
                 version: *current_version,
                 needs_refresh: false,
@@ -569,7 +605,7 @@ async fn update_cell(
         }
     } else {
         Json(CellResponse {
-            status,
+            status: format!("Error: Invalid cell reference '{}'", payload.cell),
             value: None,
             version: *current_version,
             needs_refresh: false,

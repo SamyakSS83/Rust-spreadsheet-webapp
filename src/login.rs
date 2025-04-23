@@ -146,7 +146,7 @@ pub struct UserFile {
 ///
 /// Used to store information about a user's spreadsheet files.
 #[cfg(feature = "web")]
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize,Clone)]
 pub struct SheetEntry {
     /// Name of the spreadsheet
     pub name: String,
@@ -714,40 +714,51 @@ pub async fn serve_create_sheet_form(
 /// * `form` - Form data containing the sheet name, dimensions, and visibility
 ///
 /// # Returns
-/// * `Redirect` - Redirect back to the user's sheet list
+/// * `impl IntoResponse` - Redirect back to the user's sheet list or error response
 #[cfg(feature = "web")]
 pub async fn handle_create_sheet(
     _jar: CookieJar,
     AxumPath(username): AxumPath<String>,
     Form(form): Form<CreateSheetForm>,
-) -> Redirect {
+) -> impl IntoResponse {
     // 1) Create the directory if it doesn't exist
     let user_dir = PathBuf::from(DATABASE_DIR).join(&username);
     let _ = create_dir_all(&user_dir);
 
-    // 2) Create and save the spreadsheet
+    // 2) Check if a spreadsheet with the same name already exists
+    let list_path = user_dir.join("list.json");
+    let entries: Vec<SheetEntry> = if list_path.exists() {
+        let data = fs::read_to_string(&list_path).unwrap_or_default();
+        serde_json::from_str(&data).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+
+    // Check for duplicate sheet name
+    if entries.iter().any(|entry| entry.name == form.name) {
+        return (
+            StatusCode::BAD_REQUEST,
+            format!("A spreadsheet named '{}' already exists", form.name)
+        ).into_response();
+    }
+
+    // 3) Create and save the spreadsheet
     let filename = format!("{}.bin.gz", form.name);
     let path = user_dir.join(&filename);
     let sheet = Spreadsheet::spreadsheet_create(form.rows as i16, form.cols as i16)
         .expect("Failed to create spreadsheet");
     saving::save_spreadsheet(&sheet, path.to_str().unwrap()).expect("Failed to save spreadsheet");
 
-    // 3) Update list.json
-    let list_path = user_dir.join("list.json");
-    let mut entries: Vec<SheetEntry> = if list_path.exists() {
-        let data = fs::read_to_string(&list_path).unwrap_or_default();
-        serde_json::from_str(&data).unwrap_or_default()
-    } else {
-        Vec::new()
-    };
-    entries.push(SheetEntry {
+    // 4) Update list.json
+    let mut updated_entries = entries.clone();
+    updated_entries.push(SheetEntry {
         name: form.name,
         status: form.status,
     });
-    fs::write(&list_path, serde_json::to_string_pretty(&entries).unwrap())
+    fs::write(&list_path, serde_json::to_string_pretty(&updated_entries).unwrap())
         .expect("Failed to write list.json");
 
-    Redirect::to(&format!("/{}", username))
+    Redirect::to(&format!("/{}?created=success", username)).into_response()
 }
 
 /// Handle deleting a spreadsheet
