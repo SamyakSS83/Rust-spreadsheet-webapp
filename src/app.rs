@@ -11,7 +11,7 @@ use axum::{
 };
 use axum_extra::extract::cookie::CookieJar;
 #[cfg(feature = "web")]
-use local_ip_address::local_ip; // Add this import
+// use local_ip_address::local_ip; // Add this import
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 // #[cfg(feature = "web")]
@@ -248,9 +248,10 @@ pub async fn run(rows: i16, cols: i16) -> Result<(), Box<dyn std::error::Error>>
         .with_state(app_state);
 
     // Start server
-    let listener = TcpListener::bind("0.0.0.0:3000").await?;
-    let local_ip = local_ip().unwrap_or_else(|_| "127.0.0.1".parse().unwrap());
-    println!("Listening on http://{}:3000", local_ip);
+    let listener = TcpListener::bind("127.0.0.1:3000").await?;
+    // let local_ip = local_ip().unwrap_or_else(|_| "127.0.0.1".parse().unwrap());
+    // println!("Listening on http://{}:3000", local_ip);
+    println!("Listening on http://localhost:3000");
 
     axum::serve(listener, app).await?;
 
