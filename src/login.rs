@@ -146,7 +146,7 @@ pub struct UserFile {
 ///
 /// Used to store information about a user's spreadsheet files.
 #[cfg(feature = "web")]
-#[derive(Debug, Serialize, Deserialize,Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SheetEntry {
     /// Name of the spreadsheet
     pub name: String,
@@ -738,8 +738,9 @@ pub async fn handle_create_sheet(
     if entries.iter().any(|entry| entry.name == form.name) {
         return (
             StatusCode::BAD_REQUEST,
-            format!("A spreadsheet named '{}' already exists", form.name)
-        ).into_response();
+            format!("A spreadsheet named '{}' already exists", form.name),
+        )
+            .into_response();
     }
 
     // 3) Create and save the spreadsheet
@@ -755,8 +756,11 @@ pub async fn handle_create_sheet(
         name: form.name,
         status: form.status,
     });
-    fs::write(&list_path, serde_json::to_string_pretty(&updated_entries).unwrap())
-        .expect("Failed to write list.json");
+    fs::write(
+        &list_path,
+        serde_json::to_string_pretty(&updated_entries).unwrap(),
+    )
+    .expect("Failed to write list.json");
 
     Redirect::to(&format!("/{}?created=success", username)).into_response()
 }
