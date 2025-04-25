@@ -15,6 +15,10 @@ coverage:
 
 docs: 
 	cargo doc
+	pdflatex ./src/report/report.tex
+	mv ./report.pdf ./target/doc/cop/report.pdf
+	rm report.aux report.log report.out report.toc
+	@echo "Documentation generated in target/doc/cop/report.pdf"
 	@echo "Documentation generated in target/doc/cop/index.html"
 clean:
 	cargo clean

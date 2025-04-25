@@ -1,0 +1,485 @@
+\documentclass[10pt,a4paper]{article}  % Changed from 12pt to 10pt
+
+% Add geometry package for margin control
+\usepackage[left=2.5cm,right=2.5cm,top=1.5cm,bottom=2.5cm]{geometry}
+
+% Packages
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+
+% Configure code listings
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2
+}
+
+\lstset{style=mystyle}
+
+% Title and author information
+\title{COP290 C lab: Spreadsheet Implementation}
+\author{Shivankur Gupta 2023CS10809\\ Vanshika 2023CS10746\\ Samyak Sanghvi 2023CS10807}
+
+\begin{document}
+
+\maketitle
+
+
+
+\tableofcontents
+
+\section{Introduction}
+We have migrated the existing spreadsheet project from C to Rust, enhanced its functionality, and integrated a browser-based GUI. The frontend is built using HTML and CSS and the backend is built using Rust. The application provides an intuitive interface with navigation, support for complex formulas, graph plotting similar to excel and enhanced editing features such as copy and paste, and formula management.
+
+\section{Features of Extension}
+\begin {enumerate}
+\item \textbf{Web-Based GUI}: The application features a browser-based GUI, google sheet like that provides an intuitive interface for users to interact with the spreadsheet. The GUI includes a cell grid renderer, formula bar component, and event handlers for user actions.
+    \item \textbf{Formula Management}: The system supports a wide range of formulas, including arithmetic operations, string manipulations, and built-in functions like MAX, MIN, and SLEEP. Users can enter formulas directly into cells, and the system evaluates them in real-time. Formula can be typed in the formula bar, or in the cells or by selecting cells.
+    \item \textbf{Undo/Redo Functionality}: We can go to the just previous state by using UNDO. And doing UNDO again works in actual like REDO, it goes to the initial state again. (This feature is supported only in terminal).
+    \item \textbf{File Operations}: Users can save their spreadsheets in a compressed binary format (.bin.gz) or export them as CSV files. The system also supports loading existing spreadsheets from disk.
+    \item \textbf{Graph Plotting}: The system allows users to create various types of graphs (line, bar, scatter, area) based on spreadsheet data. Users can specify parameters such as X and Y ranges, titles, labels, and dimensions for the graphs.
+    \item \textbf{Login Sytem} : The system includes a login system that allows users to register, log in, and manage their passwords securely. Password reset functionality is also provided via email.
+    \item \textbf{Collaborative sheet}: The system allows users to create and manage spreadsheets collaboratively. Users can share their spreadsheets with others, and the system tracks file ownership and access permissions.
+    \item \textbf{Public and Private} : The files can be made public or private as well.
+\end{enumerate}
+
+\section{Design and Software Architecture}
+
+\subsection{System Overview}
+
+The architecture adopts a client-server model with a browser-based frontend and a Rust backend. The system encompasses core spreadsheet functionality while supporting modern features like formula management, undo/redo capabilities, and file operations.
+
+\subsection{Architecture Components}
+
+\subsubsection{Frontend Layer}
+\begin{itemize}
+    \item \textbf{Technologies}: HTML, CSS, WebAssembly
+    \item \textbf{Frameworks}: eframe for GUI rendering, wasm for browser execution
+    \item \textbf{Key Components}:
+    \begin{itemize}
+        \item Cell Grid Renderer - Manages the viewport and displays the active 10$\times$10 grid
+        \item Formula Bar Component - Facilitates formula entry and editing
+        \item Navigation - Handles keyboard/mouse/touchpad navigation
+        \item Event Handler - Processes user actions and communicates with backend
+       
+    \end{itemize}
+\end{itemize}
+
+\subsubsection{Backend Layer}
+\begin{itemize}
+    \item \textbf{Technologies}: Rust, actix-web
+    \item \textbf{Core Components}:
+    \begin{itemize}
+        \item Cell Storage Engine - Maintains the spreadsheet data structure (up to 999 rows $\times$ 18,278 columns)
+        \item Formula Evaluator - Processes formulas and functions
+        \item Dependency Graph - Tracks cell relationships for efficient recalculation
+        \item Recalculation Engine - Updates dependent cells when values change
+        \item Error Handler - Manages exceptional conditions and circular references
+        \item Command Processor - Interprets user commands and delegates actions
+    \end{itemize}
+\end{itemize}
+
+\subsubsection{Data Persistence Layer}
+\begin{itemize}
+    \item \textbf{File Storage}: Gzip compression with bincode serialization
+    \item \textbf{Formats}: Custom binary (.bin.gz) and CSV export/import
+    \item \textbf{Version Tracking}: Sequential state storage for undo/redo operations
+\end{itemize}
+
+\subsection{Communication Flow}
+
+\begin{enumerate}
+    \item User actions in the browser trigger WebAssembly functions
+    \item WebAssembly code communicates with Rust backend via actix-web
+    \item Backend processes commands and updates the spreadsheet state
+    \item Dependency resolution triggers recalculation of affected cells
+    \item Updated state is returned to frontend and rendered
+    \item Changes are persisted to storage in compressed format
+\end{enumerate}
+
+\subsection{API Endpoints}
+
+The system exposes RESTful endpoints:
+\begin{itemize}
+    \item \texttt{/load/\{filename\}} - Retrieves spreadsheet data
+    \item \texttt{/save/\{filename\}} - Persists current state
+    \item \texttt{/edit/\{cell\}} - Modifies cell content
+    \item \texttt{/copy/\{range\}}, \texttt{/cut/\{range\}}, \texttt{/paste/\{cell\}} - Clipboard operations
+    \item \texttt{/formula/\{string\}} - Processes formula input
+    \item \texttt{/release/\{range\}} - Reverts cell modifications
+\end{itemize}
+
+\subsection{Performance Considerations}
+
+The architecture optimizes for:
+\begin{itemize}
+    \item Minimal memory footprint through sparse cell storage
+    \item Efficient recalculation via dependency tracking
+    \item Reduced network traffic with compressed data formats
+    \item Responsive UI through WebAssembly compilation
+\end{itemize}
+
+\subsection{Security Model}
+
+\begin{itemize}
+    \item IP-based access limitations for private files
+    \item Metadata tracking for file ownership
+    \item Input validation to prevent formula injection
+\end{itemize}
+
+\section{Implementation Details}
+\subsection{Modules}
+We have the following modules:
+\begin{enumerate}
+    \item \textbf{Cell} : This module contains the cell struct and its functions like initialization, dependencies insert , dependencies delete, dependencies contains etc.
+
+    \item \textbf{Spreadsheet} : This module is the main module which contains the main function and all the functions related to the spreadsheet like initialization, formula evaluation, dependencies management, error handling etc. It also contains the main loop of the program which takes the input from the user and calls the respective functions based on the input.
+    \item \textbf{login} : Handles user registration, login, logout, and password management (reset/change). Manages session creation and validation (using cookies stored in a global session map). Reads and writes user data from a JSON file (users.json) and also handles per-user file management (list.json for spreadsheets).
+    
+    \item \textbf{mailer} : Responsible for generating and sending password reset emails. Used by the login flow when a user requests to reset their password.
+    
+    \item \textbf{saving} : Manages the persistence of spreadsheets to disk. Serializes spreadsheets with compression (using gzip) and writes to files with a ".bin.gz" extension.
+    
+    \item \textbf{downloader} : Converts spreadsheet data into downloadable formats such as CSV and XLSX. Used by API endpoints for exporting user data.
+    
+    \item \textbf{graph} : Generates graphs (such as line, bar, scatter, and area charts) based on spreadsheet data. Uses parameters such as X and Y ranges along with options (title, labels, dimensions) to produce image data.
+    
+    \item \textbf{app (middleware)} : Defines the overall routing structure of the website. Separates public routes (login, signup, read-only sheet access) from protected routes (editing spreadsheets, updates, downloads, etc.). Attaches shared state (such as the current spreadsheet and user file lists) to the router. The middleware function (require\_auth) checks if a valid session exists, and if not, either permits public API access (if the file is marked public) or redirects to the login page.
+
+\section{Webserver Management}
+
+This section provides a brief overview of the webserver's endpoints and its management logic.
+
+\subsection{Public Endpoints}
+\begin{itemize}
+    \item \textbf{Authentication Pages:} \texttt{/login}, \texttt{/signup}, \texttt{/logout}, \texttt{/forgot-password}, \texttt{/reset-password}, \texttt{/change-password}. These endpoints serve pages and handle form submissions for user registration, login, and password recovery.
+    \item \textbf{Static Assets:} Served from the \texttt{/static} directory.
+    \item \textbf{Public Sheet Access:} Endpoints such as \texttt{/:username/:sheet\_name} that allow users to view spreadsheets if marked public, and API endpoints (\texttt{/api/sheet}, \texttt{/api/cell/:cell\_name}, \texttt{/api/sheet\_info}) which return read-only data.
+\end{itemize}
+
+\subsection{Protected Endpoints}
+\begin{itemize}
+    \item \textbf{Spreadsheet Operations:} Endpoints like \texttt{/sheet} which serve the editing UI, along with APIs for updating cells (\texttt{/api/update\_cell}), saving (\texttt{/api/save}), exporting (\texttt{/api/export}), loading (\texttt{/api/load}), and graph generation (\texttt{/api/graph}).
+    \item \textbf{Download Endpoints:} \texttt{/api/download/csv} and \texttt{/api/download/xlsx} for converting spreadsheet data into downloadable formats.
+    \item \textbf{File Management:} Endpoints for listing user files (\texttt{/:username}), creating (\texttt{/:username/create}), updating status (\texttt{/:username/:sheet\_name/status}), 
+    and deleting spreadsheets \newline(\texttt{/:username/:sheet\_name/delete}).
+\end{itemize}
+
+\subsection{Management Logic}
+\begin{itemize}
+    \item \textbf{Authentication Middleware:} The middleware intercepts protected requests to ensure that a valid session cookie exists.
+    \begin{itemize}
+        \item If a valid session is found (via \texttt{validate\_session}), the associated username is added to the request context and the request proceeds.
+        \item If no valid session is detected, for API endpoints the middleware checks the corresponding user’s \texttt{list.json} to determine whether the requested spreadsheet is public.
+        \item If neither condition is met, the user is redirected to the login page.
+    \end{itemize}
+    \item \textbf{Session Management:} User sessions are created during login, stored in a global session map with an expiration time, and validated by the middleware. This ensures that only authenticated users can access protected endpoints.
+    \item \textbf{Module Overview:} 
+    \begin{itemize}
+        \item \textit{login:} Handles user registration, login, logout, password resets, and session management.
+        \item \textit{mailer:} Responsible for sending password reset emails.
+        \item \textit{saving:} Manages serialization and persistence of spreadsheets using compression.
+        \item \textit{downloader:} Converts spreadsheet data into CSV and XLSX formats.
+        \item \textit{graph:} Generates graphs (such as line, bar, scatter, area) from spreadsheet data.
+    \end{itemize}
+\end{itemize}
+    
+\end{enumerate}
+
+\section{Design Decisions and why this is a good design}
+\begin{enumerate}
+    \item We have used the crate of plotters to plot the graph of the given data in different types like line graph, bar graph, area graph, scatter graph etc.  
+    This is a good design decision because it provides flexibility in data visualization and supports multiple formats which can enhance user experience and understanding of the data.
+
+    \item We have used the crate of actix-web to create the server and handle the requests from the client.  
+    This is a good design decision because actix-web is a powerful, performant, and asynchronous framework that helps build scalable and responsive web servers easily.
+
+    \item We have used the crate of bincode to serialize and deserialize the data for saving and loading the file.  
+    This is a good design decision because bincode is highly efficient in binary serialization, leading to faster save/load times and reduced file sizes, which improves performance.
+
+    \item We have used the crate of gzip to compress and decompress the data for saving and loading the file.  
+    This is a good design decision because compressing the serialized data reduces storage space and speeds up file transfer or I/O operations.
+
+    \item We have used the crate of serde to serialize and deserialize the data for saving and loading the file.  
+    This is a good design decision because serde is a highly flexible and reliable serialization framework that works seamlessly with many data formats and types.
+
+    \item 
+    \begin{itemize}
+        \item We have Spreadsheet as an object oriented approach. The spreadsheet is an object which contains the cells and the functions to manipulate the cells. This allows us to easily add new features in the future without changing the existing code.  
+        This is a good design decision because encapsulating functionality within objects makes the code modular, reusable, and easier to test or extend.
+
+        \item We have used the crate of regex to parse the formula and validate the input in a single function. This abstraction allows us to easily modify the format of the formulas as input from user in future without affecting the rest of the codebase.  
+        This is a good design decision because regex provides powerful pattern matching, allowing robust validation and parsing with minimal code complexity.
+
+        \item We ensure that the parsing is done only once for each formula and the formula is then passed as arguments to other functions. This also saves time of parsing the formula again and again.  
+        This is a good design decision because it minimizes redundant computations, leading to more efficient runtime performance, especially as the spreadsheet grows.
+
+        \item Formula as Enum : Since there can be different types of formulas for various operations, we have used an enum to represent the different types of formulas. This allows us to easily add new types of formulas in the future without changing the existing code.  
+        This is a good design decision because enums offer a type-safe way to handle distinct variants and allow pattern matching, improving code clarity and reducing bugs.
+
+        \item Dependencies : We store the cells that depend on the current cell in a vector and then convert it into an ordered set when the number of dependencies increases. This allows us to efficiently manage the dependencies and also saves space for the first few commands.  
+        This is a good design decision because it balances memory efficiency with performance, adapting to both small and large dependency graphs dynamically.
+
+        \item The workflow inside the spreadsheet is as follows:
+        \begin{itemize}
+            \item The user enters a command in the command line.
+            \item The command is parsed.
+            \item The dependencies are checked and only then the evaluation proceeds. This helps in avoiding unnecessary calculations and also helps in avoiding circular dependencies else we will have to revert the changes made if cycle is detected.  
+            This is a good design decision because it ensures correctness of spreadsheet evaluations and protects against logical errors like cycles.
+
+            \item The dependencies are now updated, this is required to be done before evaluation so that evaluating current cell also re-evaluates it's correct dependents.  
+            This is a good design decision because it guarantees that the computation order respects dependency relationships, ensuring consistent and accurate outputs.
+
+            \item To avoid unnecessary re-calculations, topo sort is must, we must update the dependents in the order of their dependencies.  
+            This is a good design decision because topological sorting ensures correct update ordering in dependency graphs, minimizing computational overhead and preventing stale values.
+
+            \item The updated spreadsheet is displayed to the user.  
+            This is a good design decision because immediate feedback helps the user understand the result of their command and makes the application feel responsive.
+        \end{itemize}
+    \end{itemize}
+\end{enumerate}
+
+\section{Changes made to Proposed Implementation}
+\begin{itemize}
+    \item We did not add the CUT implementation in our final software since it involved multicellular formulas which takes updating several cells in one command. If we had to do so then we have to check for cycles without changing original dependencies since the command may be cycle involving, which would require creating a clone or copy of dependencies which was a huge overhead.
+    \item For UNDO REDO and RELEASE, we have simply implemented a command UNDO which just takes us to the previous state.
+    \item While not implemented in the current version, extending the system to support floating-point numbers would require a minimal change from \texttt{i32} to \texttt{f32} in our core data structures. This modification was deemed a straightforward extension that could be addressed in future iterations without significant architectural changes.
+\end{itemize}
+
+\section{Extra extension ideas}
+\begin{enumerate}
+    \item We could support multicellular formulas, which we skipped here due to time constraints. This would allow users to enter formulas that span multiple cells, enhancing the spreadsheet's functionality.
+    \item We could also support more complex functions like VLOOKUP, HLOOKUP, and other advanced Excel functions.
+    \item In our GUI we could have supported drag and drop functionality for cells, which would allow users to easily move cells around the spreadsheet.
+    \item In out GUI we could have added the functionality of selecting multiple cells which is right now restricted to selecting only single cells.
+\end{enumerate}
+\section{Primary Data Structures}
+\begin{enumerate}
+    % Spreadsheet , CEll, enum for formula , Vector for dependencies , B Tree for dependents if more in number , vector for cells of spreadsheet, stack for implementing UNDO
+    \item \textbf{Spreadsheet}: The spreadsheet struct is the main data structure that represents the entire spreadsheet. It contains a 2D array of cells, each cell being represented by a cell struct. It also contains the functions to manipulate the cells and the spreadsheet.
+    \item \textbf{Cell}: The cell struct is the core data structure that represents each cell in the spreadsheet. It contains the value, formula, location, and dependents of a cell.
+    \item \textbf{Formula}: The formula is represented as an enum which contains the different types of formulas that can be used in the spreadsheet. This allows us to easily add new types of formulas in the future without changing the existing code.
+    \item \textbf{Vector}: The vector is used to store the dependencies of a cell and is converted into an ordered set when the number of dependencies increases.
+    \item \textbf{B Tree}: It is used to store the dependents of a cell. It is implemented as an AVL tree which allows us to efficiently manage the dependencies and also saves space for the first few commands. Also this is used while implementing recursive functions.
+    \item \textbf{Stack}: The stack is used to implement the UNDO functionality. It stores the previous state of the spreadsheet and allows us to revert to the previous state when required. Also, it is used while implementing recursive functions.
+\end{enumerate}
+\section{Interface between software modules}
+\begin{enumerate}
+    \item Spreadsheet Cell Interface : The Spreadsheet module interacts with Cell module using the methods such as get\_dependents, remove dependents and update dependencies which calls for cell\_dep\_insert, cell\_dep\_remove. For setting the value of cell it directly accesses the value field of Cell struct which is public.
+    \item Main file interacts with Spreadsheet by calling for the functions such as display and execute command using set\_cell\_value or undo function.
+    \item Event-Command Interface : User actions from frontend (or terminal) are captured and sent to the backend via WebAssembly. The backend processes these commands and updates the spreadsheet state accordingly. The frontend then receives the updated state and renders it for the user.
+    \item Graph-Spreadsheet Interface : The graph.rs logic in the backend interacts using the intermediate backend app.rs which takes as input the response from frontend and sends it to the graph module. The graph module then processes the data and returns the graph data to the frontend for rendering.
+    \item Downloader-Spreadsheet Interface : The downloader module interacts with the spreadsheet module using the methods such as download and upload which calls for the functions in the spreadsheet module to get the data and save it in the required format.
+    \item Login Interface : The login module provides user authentication, session management, and file operations. It interfaces with the spreadsheet module through the loader.rs file which handles file loading/saving operations. The login system uses a JSON-based user database for credential storage, with passwords secured using Argon2 hashing. The mailer module integrates with the login system to facilitate password reset functionality via email. User sessions are managed using cookies with UUIDs as session identifiers. Each authenticated user has access to spreadsheet files they own, with the ability to set visibility permissions (public/private).
+    \item Mailer Interface : The mailer module provides email functionality for the application, primarily used for password reset operations. It interfaces with the login system to send password reset codes to users who have forgotten their passwords. The mailer utilizes the SMTP protocol with TLS encryption to securely send emails through a configured email server (smtp.iitd.ac.in). The module includes functionality to generate random alphanumeric reset codes and constructs formatted email messages containing these codes. Email credentials are stored in an external configuration file to maintain security.
+    \item Loader Interface : The loader module provides file I/O capabilities for importing spreadsheets from external formats such as CSV and Excel (XLSX). It interfaces with the spreadsheet module by converting external file formats into the internal spreadsheet structure. The CSV loader parses comma-separated values with proper handling of quoted fields and escaping. For Excel files, the loader uses the calamine library to extract cell data and formulas, converting them to the application's internal format. The loader detects file types by their extensions and delegates to the appropriate import function, creating a unified interface for handling multiple input formats. The module gracefully handles errors during the import process, providing informative error messages when issues arise.
+\end{enumerate}
+\section{Approaches for Encapsulation}
+% list all the structs and enums and their methods whatever things are public or private;
+The software is designed to encapsulate the core functionality of a spreadsheet application, providing a clear interface for users to interact with. The encapsulation is achieved through the use of modules and functions that abstract away the underlying complexity of the implementation.
+
+\begin{enumerate}
+\item We have a main.rs file which imports the spreadsheet module. The main.rs file contains the main function which is the entry point of the program. The main function initializes the spreadsheet and starts the event loop.
+
+\item We have defined a struct Spreadsheet which contains fields for storing the cells, the number of rows and columns, undo stack and visible section for display. The Spreadsheet struct has the following fields:
+\begin{itemize}
+    \item rows: i16 - Number of rows in the spreadsheet (public)
+    \item cols: i16 - Number of columns in the spreadsheet (public)
+    \item view\_row: i16 - Current top row of the view for scrolling (public)
+    \item view\_col: i16 - Current leftmost column of the view for scrolling (public)
+    \item cells: Vec$<$Option$<$Box$<$Cell$>$$>$ - Matrix of cells stored as a flat vector (public)
+    \item undo\_stack: Vec$<$(ParsedRHS, i16, i16)$>$ - Stack of previous cell states for undo (public)
+\end{itemize}
+
+\item The Cell struct represents an individual cell in the spreadsheet with the following fields:
+\begin{itemize}
+    \item row: i16 - Row index of the cell (public)
+    \item col: i16 - Column index of the cell (public)
+    \item error: bool - Whether the cell contains an error (public)
+    \item value: i32 - Current numeric value of the cell (public)
+    \item formula: ParsedRHS - Formula defining how the cell's value is calculated (public)
+    \item dependents: Dependents - Collection of cells that depend on this cell (public)
+\end{itemize}
+
+\item The Dependents enum provides optimizations for different numbers of dependencies:
+\begin{itemize}
+    \item Vector(Vec$<$(i16, i16)$>$) - For cells with few dependents
+    \item Set(BTreeSet$<$(i16, i16)$>$) - For cells with many dependents
+    \item None - For cells with no dependents
+\end{itemize}
+
+\item The ParsedRHS enum represents different types of formulas that can be used in cells:
+\begin{itemize}
+    \item Function \{name: FunctionName, args: (Operand, Operand)\} - For function calls like SUM, MIN, MAX
+    \item Sleep(Operand) - For sleep operations
+    \item Arithmetic \{lhs: Operand, operator: char, rhs: Operand\} - For arithmetic operations
+    \item SingleValue(Operand) - For simple values or references
+    \item None - For empty cells
+\end{itemize}
+
+\item The Operand enum represents values in formulas:
+\begin{itemize}
+    \item Number(i32) - A numeric constant
+    \item Cell(i16, i16) - A reference to another cell
+\end{itemize}
+
+\item The FunctionName enum represents spreadsheet functions:
+\begin{itemize}
+    \item Min - Minimum value in a range
+    \item Max - Maximum value in a range
+    \item Avg - Average value in a range
+    \item Sum - Sum of values in a range
+    \item Stdev - Standard deviation of values in a range
+    \item Copy - Copy values from one range to another
+\end{itemize}
+
+\item For the web interface, we've defined an AppState struct to manage application state:
+\begin{itemize}
+    \item sheet: Mutex$<$Box$<$Spreadsheet$>$$>$ - The current spreadsheet with thread-safe access
+    \item original\_path: Mutex$<$Option$<$String$>$$>$ - Path of the loaded spreadsheet file
+    \item public\_sheets: Mutex$<$HashSet$<$String$>$$>$ - Set of publicly accessible spreadsheets
+    \item version: Mutex$<$u64$>$ - Version counter for conflict management
+    \item last\_modified: Mutex$<$std::time::SystemTime$>$ - Last modified timestamp
+\end{itemize}
+
+\item Key methods for the Spreadsheet struct:
+\begin{itemize}
+    \item spreadsheet\_create(rows: i16, cols: i16) -> Option$<$Box$<$Self$>$$>$ - Creates a new spreadsheet
+    \item spreadsheet\_set\_cell\_value(row: i16, col: i16, rhs: ParsedRHS, status\_out: \&mut String) - Updates a cell and its dependents
+    \item spreadsheet\_evaluate\_expression(expr: \&ParsedRHS, row: i16, col: i16) -> (i32, bool) - Evaluates expressions
+    \item spreadsheet\_parse\_cell\_name(cell\_name: \&str) -> Option$<$(i16, i16)$>$ - Parses cell references
+    \item spreadsheet\_undo(status\_out: \&mut String) - Undoes the last operation
+    \item is\_valid\_command(cell\_name: \&str, formula: \&str) -> (bool, i16, i16, ParsedRHS) - Validates cell updates
+\end{itemize}
+
+\item Key methods for Cell management:
+\begin{itemize}
+    \item cell\_create(row: i16, col: i16) -> Box$<$Cell$>$ - Creates a new cell
+    \item cell\_dep\_insert(cell: \&mut Cell, row: i16, col: i16) - Adds a dependency
+    \item cell\_dep\_remove(cell: \&mut Cell, row: i16, col: i16) - Removes a dependency
+    \item cell\_contains(cell: \&Cell, row: i16, col: i16) -> bool - Checks for dependencies
+\end{itemize}
+
+\item For graph generation, we have the GraphType enum and GraphOptions struct:
+\begin{itemize}
+    \item GraphType variants: Line, Bar, Scatter, Area
+    \item GraphOptions fields: title, x\_label, y\_label, width, height, graph\_type
+    \item create\_graph function generates visualizations from spreadsheet data
+\end{itemize}
+
+\item The login module provides user authentication and management:
+\begin{itemize}
+    \item User struct contains username, email, password\_hash, and reset code information
+    \item Functions for registration, login, session management, and password reset
+    \item Web handlers for processing form submissions and authenticating requests
+\end{itemize}
+
+\item The downloader module provides export functionality:
+\begin{itemize}
+    \item to\_csv function exports spreadsheet to CSV format
+    \item to\_xlsx function exports spreadsheet to Excel format
+    \item Helper functions for converting between internal and external formats
+\end{itemize}
+\end{enumerate}
+
+Our encapsulation approach follows several important principles:
+\begin{enumerate}
+    \item \textbf{Information Hiding}: Internal implementation details are hidden behind public interfaces. For example, the complex dependency tracking is abstracted away from users.
+    
+    \item \textbf{Modularity}: Functionality is divided into separate modules (spreadsheet, cell, graph, login, etc.) that each handle specific concerns.
+    
+    \item \textbf{Immutability Where Possible}: Many operations return new data rather than modifying existing data, especially for functional operations.
+    
+    \item \textbf{Clear Ownership}: The Rust ownership system ensures that resources are properly managed, preventing data races and memory leaks.
+    
+    \item \textbf{Thread Safety}: Mutex wrappers around shared state ensure thread-safe operations in the web interface.
+    
+    \item \textbf{Type Safety}: Enums with variants represent different kinds of data, ensuring type safety through the compiler.
+\end{enumerate}
+
+This encapsulation approach makes the codebase more maintainable, easier to understand, and less prone to bugs. It also provides a clear separation between the core spreadsheet functionality and the web interface, allowing each component to evolve independently.
+\section{Whether we had to modify the design}
+\begin{enumerate}
+    \item We encountered performance issues during execution, particularly related to time efficiency. To address this, we leveraged flamegraph profiling to identify bottlenecks in our implementation. Based on the insights gained, we made several optimizations. For example, we ensured that formula parsing is performed only once per formula to avoid redundant computations. Additionally, we used \texttt{lazy\_static} to precompile regular expressions, reducing the overhead of repeated regex compilation during runtime.
+
+    \item We ran into storage limitations, especially as the spreadsheet grew larger. To optimize memory usage, we changed the data types of row and column indices from default integer types to \texttt{u16}, as it was the smallest type capable of representing all possible row and column values. This change resulted in noticeable memory savings.
+
+    \item Through flamegraph analysis, we also discovered that frequent allocations and deallocations of \texttt{String} objects in the dependencies list were contributing to performance degradation. To resolve this, we modified the dependency tracking system to store row and column indices as tuples of integers instead of strings. This significantly reduced memory overhead and improved runtime efficiency.
+\end{enumerate}
+
+\section{Data Structures and Uses}
+            The following Datastrutures have been used in this implementation
+            
+            \begin{itemize}
+                \item \textbf{Ordered Set (AVL Tree)}: To store a large list of dependencies of a cell.
+                \item \textbf{Cell Structure}: To store the value, formula, location and dependents of a cell.
+                \item \textbf{Directed Acyclic Graph}: To model and capture formula dependencies.
+                \item \textbf{Linked List}: To store the order of operations after Topo sort.
+                \item \textbf{Stack}: To replace recursion, allowing larger recursion depths.
+                \item \textbf{Vector}: To initially store the list of dependencies of a cell.
+            \end{itemize}
+
+\section{Covered Edge Cases}
+
+In our testing suite, we have done unit testing as well as Blackbox testing.
+The following edge cases were covered:
+
+\begin{itemize}
+    \item \textbf{Cyclic Dependency}: 
+    \begin{itemize}
+        \item We tested if the system can detect cyclic dependencies between cells. The system correctly identifies circular dependencies and raises an error message while rejecting the formula. (tested by \texttt{input\_cycle.txt} and \texttt{spreadsheet\_test.c}).
+         \item $A1=0*B1$ $B1=A1$ instead of A1 being a constant, it is recognised as dependent on B1, hence it shows cyclic dependency.
+    \end{itemize}
+    
+    \item \textbf{Invalid Formula}: 
+    \begin{itemize}
+        \item In addition to the well-defined signatures, we have given support for categorizing numerals with \(+\) and \(-\) signs, so inputs like \(1++1\) and \(1+-1\) are considered valid. 
+        \item All other inputs and out-of-bound inputs are raised as invalid. 
+        \item We do not support case invariance in any function or arbitrary '0's in the cell names. 
+        \item We also consider range functions with empty inputs (eg. MAX(), SLEEP() ) to be a invalid input. (tested by \texttt{input\_arbit.txt}, \texttt{input\_unrec\_cmds.txt} and \texttt{spreadsheet\_test.c}).
+        
+    \end{itemize}
+    \item \textbf{Sleep Cells}: 
+    \begin{itemize}
+        \item We tested if the normal sleep function works as expected. We tested for cascaded sleep cells and their behavior upon changing the base of the cascade. 
+        \item We also tested for SLEEP(num), where num is a negative number. (tested by \texttt{input\_sleep.txt} and \texttt{spreadsheet\_test.c}).
+    \end{itemize}
+    \item \textbf{Invalid Arithmeic}: We tested if logically invalid arithmetic operations, such as division by zero, and its cascades are flagged correctly by showing ERR on display. (tested by \texttt{input\_checks\_err.txt})
+    \item \textbf{Scrolling}: We unit-tested the scrolling nature to match the specifications of the assignment. (tested by \texttt{scroll\_test.c})
+    \item \textbf{Datastructures Correctness}: We unit-tested for the correctness and robustness Cell struct and Spreadsheet. (tested by \texttt{spreadsheet\_test.c} and \texttt{cell\_test.c})
+    \item{Empty input} : Empty input i.e. just '$\backslash$n' from the user is recognised as invalid command.
+\end{itemize}
+
+\section{Links}
+
+ \textbf{\href{https://github.com/SamyakSS83/cop}{GitHub Repository of the project}} \\
+
+
+
+
+
+
+
+\end{document}
