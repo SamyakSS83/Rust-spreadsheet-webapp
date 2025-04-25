@@ -248,10 +248,10 @@ pub async fn run(rows: i16, cols: i16) -> Result<(), Box<dyn std::error::Error>>
         .with_state(app_state);
 
     // Start server
-    let listener = TcpListener::bind("127.0.0.1:3000").await?;
+    let listener = TcpListener::bind("127.0.0.1:80").await?;
     // let local_ip = local_ip().unwrap_or_else(|_| "127.0.0.1".parse().unwrap());
-    // println!("Listening on http://{}:3000", local_ip);
-    println!("Listening on http://localhost:3000");
+    // println!("Listening on http://{}:80", local_ip);
+    println!("Listening on http://localhost:80");
 
     axum::serve(listener, app).await?;
 
