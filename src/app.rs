@@ -151,6 +151,15 @@ struct SheetStatusResponse {
     last_modified: u64,
 }
 
+/// Query parameters for getting sheet data
+#[derive(Deserialize)]
+struct SheetDataQuery {
+    start_row: Option<i16>,
+    start_col: Option<i16>,
+    rows: Option<i16>,
+    cols: Option<i16>,
+}
+
 /// Main application entry point
 ///
 /// Initializes the database, creates the default spreadsheet, and starts the web server.
@@ -345,38 +354,78 @@ async fn serve_sheet(
 /// Returns the current spreadsheet data including all cells with values.
 ///
 /// # Arguments
+/// * `params` - Query parameters for pagination
 /// * `state` - Application state containing the spreadsheet
 ///
 /// # Returns
 /// * JSON representation of the spreadsheet data
-async fn get_sheet_data(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    let sheet = state.sheet.lock().unwrap();
-    let rows = sheet.rows;
-    let cols = sheet.cols;
-
+async fn get_sheet_data(
+    Query(params): Query<SheetDataQuery>, 
+    State(state): State<Arc<AppState>>
+) -> impl IntoResponse {
+    // Try to lock the spreadsheet state with error handling
+    let sheet_result = state.sheet.lock();
+    let sheet = match sheet_result {
+        Ok(sheet) => sheet,
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({
+                    "error": "Spreadsheet is currently unavailable"
+                }))
+            ).into_response();
+        }
+    };
+    
+    // Get total dimensions
+    let total_rows = sheet.rows;
+    let total_cols = sheet.cols;
+    
+    // Parse pagination parameters with defaults
+    let start_row = params.start_row.unwrap_or(1).max(1);
+    let start_col = params.start_col.unwrap_or(1).max(1);
+    let page_rows = params.rows.unwrap_or(50).min(100).max(1); // Limit to 100 rows
+    let page_cols = params.cols.unwrap_or(50).min(100).max(1); // Limit to 100 cols
+    
+    // Calculate end bounds respecting sheet dimensions
+    let end_row = (start_row + page_rows - 1).min(total_rows);
+    let end_col = (start_col + page_cols - 1).min(total_cols);
+    
     let mut cell_data = Vec::new();
-
-    for r in 1..=rows {
-        for c in 1..=cols {
-            let index = ((r - 1) * cols + (c - 1)) as usize;
-            if let Some(cell) = &sheet.cells[index] {
-                cell_data.push(serde_json::json!({
-                    "row": r,
-                    "col": c,
-                    "name": Spreadsheet::get_cell_name(r, c),
-                    "value": cell.value,
-                    "formula": formula_to_string(&cell.formula),  // Convert to string
-                    "error": cell.error,
-                }));
+    
+    // Only process cells in the requested range
+    for r in start_row..=end_row {
+        for c in start_col..=end_col {
+            // Safely calculate index with bounds checking
+            if r > 0 && r <= total_rows && c > 0 && c <= total_cols {
+                let index = ((r - 1) * total_cols + (c - 1)) as usize;
+                
+                // Make sure index is within bounds of the cells array
+                if index < sheet.cells.len() {
+                    if let Some(cell) = &sheet.cells[index] {
+                        cell_data.push(serde_json::json!({
+                            "row": r,
+                            "col": c,
+                            "name": Spreadsheet::get_cell_name(r, c),
+                            "value": cell.value,
+                            "formula": formula_to_string(&cell.formula),
+                            "error": cell.error,
+                        }));
+                    }
+                }
             }
         }
     }
-
+    
     Json(serde_json::json!({
-        "rows": rows,
-        "cols": cols,
-        "cells": cell_data,
-    }))
+        "totalRows": total_rows,
+        "totalCols": total_cols,
+        "startRow": start_row,
+        "startCol": start_col,
+        "rows": end_row - start_row + 1,
+        "cols": end_col - start_col + 1,
+        "cells": cell_data
+    })).into_response()
 }
 
 /// Get data for a specific cell

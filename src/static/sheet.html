@@ -59,12 +59,16 @@
             flex: 1;
             overflow: auto;
             position: relative;
+            scroll-behavior: smooth;
         }
 
         #grid {
             display: grid;
             grid-template-columns: 50px repeat(var(--cols, 10), 100px);
             grid-template-rows: 30px repeat(var(--rows, 10), 25px);
+            /* This ensures the grid stays at full size even with empty cells */
+            min-height: calc(25px * var(--rows) + 30px);
+            min-width: calc(100px * var(--cols) + 50px);
         }
 
         .cell {
@@ -381,6 +385,17 @@
             let functionMode = null;
             let selectedRange = [];
 
+            // Add these variables near the top of your DOMContentLoaded function
+            let viewportRows = 50;  // Number of rows to load at once
+            let viewportCols = 50;  // Number of columns to load at once
+            let currentStartRow = 1; // Current top row loaded
+            let currentStartCol = 1; // Current leftmost column loaded
+            let isFetching = false; // Flag to prevent multiple simultaneous fetches
+            let totalRows = 0;      // Total rows in the sheet
+            let totalCols = 0;      // Total columns in the sheet
+            let loadedCells = {};   // Cache of loaded cell data
+            let visibleCellsChanged = false; // Flag to track if visible area changed
+
             // Error modal handlers
             const errorModal = document.getElementById('error-modal');
             const closeErrorModalBtn = document.getElementById('close-error-modal');
@@ -417,7 +432,7 @@
             function startPolling() {
                 if (isPolling) {
                     pollForChanges();
-                    setInterval(pollForChanges, 80); // Check every 3 seconds
+                    setInterval(pollForChanges, 3000); // Check every 3 seconds
                 }
             }
 
@@ -515,19 +530,196 @@
             let sheetData = null;
 
             // Fetch sheet data
-            async function fetchSheetData() {
-                const response = await fetch('/api/sheet');
-                sheetData = await response.json();
-                renderGrid(sheetData.rows, sheetData.cols);
-                updateCellValues(sheetData.cells);
-
-                // Get the latest version after sheet refresh
+            async function fetchSheetData(startRow = 1, startCol = 1) {
+                if (isFetching) return;
+                
+                isFetching = true;
+                displayBar.textContent = "Loading cells...";
+                
                 try {
+                    const url = `/api/sheet?start_row=${startRow}&start_col=${startCol}&rows=${viewportRows}&cols=${viewportCols}`;
+                    const response = await fetch(url);
+                    const data = await response.json();
+                    
+                    // Store total dimensions on first load
+                    if (totalRows === 0) {
+                        totalRows = data.totalRows;
+                        totalCols = data.totalCols;
+                        renderEmptyGrid(totalRows, totalCols);
+                    }
+                    
+                    // Update loaded cells
+                    updateCellValues(data.cells);
+                    
+                    // Store the cells in our cache
+                    data.cells.forEach(cellData => {
+                        const key = cellData.name;
+                        loadedCells[key] = cellData;
+                    });
+                    
+                    // Update current viewport bounds
+                    currentStartRow = data.startRow;
+                    currentStartCol = data.startCol;
+                    
+                    // Get the latest sheet version
                     const statusResponse = await fetch('/api/sheet_status');
                     const status = await statusResponse.json();
                     currentVersion = status.version;
+                    
+                    displayBar.textContent = `Loaded cells ${data.startRow}-${data.startRow + data.rows - 1}, ${data.startCol}-${data.startCol + data.cols - 1}`;
                 } catch (error) {
-                    console.error('Error fetching sheet version:', error);
+                    console.error('Error fetching sheet data:', error);
+                    displayBar.textContent = `Error loading cells: ${error.message}`;
+                } finally {
+                    isFetching = false;
+                }
+            }
+
+            // Function to render an empty grid with all dimensions
+            function renderEmptyGrid(rows, cols) {
+                grid.style.setProperty('--rows', rows);
+                grid.style.setProperty('--cols', cols);
+                grid.innerHTML = '';
+
+                // Add corner cell
+                const cornerCell = document.createElement('div');
+                cornerCell.className = 'cell header-cell corner-header';
+                grid.appendChild(cornerCell);
+
+                // Add column headers (A, B, C...)
+                for (let c = 1; c <= cols; c++) {
+                    const colHeader = document.createElement('div');
+                    colHeader.className = 'cell header-cell col-header';
+                    colHeader.textContent = columnToLetter(c);
+                    grid.appendChild(colHeader);
+                }
+
+                // Add rows with headers
+                for (let r = 1; r <= rows; r++) {
+                    // Row header
+                    const rowHeader = document.createElement('div');
+                    rowHeader.className = 'cell header-cell row-header';
+                    rowHeader.textContent = r;
+                    grid.appendChild(rowHeader);
+
+                    // Regular cells (empty placeholders)
+                    for (let c = 1; c <= cols; c++) {
+                        const cell = document.createElement('div');
+                        cell.className = 'cell';
+                        cell.dataset.row = r;
+                        cell.dataset.col = c;
+                        cell.dataset.name = columnToLetter(c) + r;
+                        cell.addEventListener('click', () => selectCell(cell));
+                        grid.appendChild(cell);
+                    }
+                }
+            }
+
+            // Modified updateCellValues function
+            function updateCellValues(cells) {
+                cells.forEach(cellData => {
+                    if (!cellData.name) return;
+
+                    const selector = `.cell[data-name="${cellData.name}"]`;
+                    const cellElement = document.querySelector(selector);
+                    if (cellElement) {
+                        cellElement.textContent = cellData.value !== undefined ? cellData.value : '';
+                        if (cellData.error) {
+                            cellElement.classList.add('error');
+                        } else {
+                            cellElement.classList.remove('error');
+                        }
+                        cellElement.dataset.formula = cellData.formula || '';
+                    }
+                });
+            }
+
+            // Add scroll event handler to the grid container
+            document.getElementById('grid-container').addEventListener('scroll', handleScroll);
+
+            // Handle grid scrolling
+            function handleScroll() {
+                if (isFetching) return;
+                
+                const container = document.getElementById('grid-container');
+                const gridRect = grid.getBoundingClientRect();
+                const containerRect = container.getBoundingClientRect();
+                
+                // Get all currently visible cells
+                const visibleCells = document.elementsFromPoint(
+                    containerRect.left + containerRect.width / 2,
+                    containerRect.top + containerRect.height / 2
+                ).filter(el => el.classList.contains('cell') && !el.classList.contains('header-cell'));
+                
+                if (visibleCells.length === 0) return;
+                
+                // Find the min and max row/col of visible cells
+                let minRow = Infinity, maxRow = 0, minCol = Infinity, maxCol = 0;
+                
+                visibleCells.forEach(cell => {
+                    const row = parseInt(cell.dataset.row);
+                    const col = parseInt(cell.dataset.col);
+                    
+                    minRow = Math.min(minRow, row);
+                    maxRow = Math.max(maxRow, row);
+                    minCol = Math.min(minCol, col);
+                    maxCol = Math.max(maxCol, col);
+                });
+                
+                // If we're getting close to the edge of our loaded area, load more data
+                const bufferZone = 10; // Cells to use as buffer before fetching more
+                let needToFetch = false;
+                let newStartRow = currentStartRow;
+                let newStartCol = currentStartCol;
+                
+                // Check if we're near the right edge
+                if (maxCol + bufferZone > currentStartCol + viewportCols - 1) {
+                    newStartCol = Math.min(totalCols - viewportCols + 1, currentStartCol + Math.floor(viewportCols / 2));
+                    needToFetch = true;
+                }
+                // Check if we're near the left edge
+                else if (minCol - bufferZone < currentStartCol) {
+                    newStartCol = Math.max(1, currentStartCol - Math.floor(viewportCols / 2));
+                    needToFetch = true;
+                }
+                
+                // Check if we're near the bottom edge
+                if (maxRow + bufferZone > currentStartRow + viewportRows - 1) {
+                    newStartRow = Math.min(totalRows - viewportRows + 1, currentStartRow + Math.floor(viewportRows / 2));
+                    needToFetch = true;
+                }
+                // Check if we're near the top edge
+                else if (minRow - bufferZone < currentStartRow) {
+                    newStartRow = Math.max(1, currentStartRow - Math.floor(viewportRows / 2));
+                    needToFetch = true;
+                }
+                
+                // If we need to fetch new data, do so
+                if (needToFetch) {
+                    fetchSheetData(newStartRow, newStartCol);
+                }
+            }
+
+            // Add this function to jump to a specific cell or area
+            async function jumpToCell(cellName) {
+                const coords = cellNameToCoordinates(cellName);
+                if (!coords) return;
+                
+                // Calculate the appropriate viewport that includes this cell
+                const startRow = Math.max(1, coords.row - Math.floor(viewportRows / 4));
+                const startCol = Math.max(1, coords.col - Math.floor(viewportCols / 4));
+                
+                // Fetch the data for this area
+                await fetchSheetData(startRow, startCol);
+                
+                // Select and scroll to the target cell
+                const cellSelector = `.cell[data-name="${cellName}"]`;
+                const targetCell = document.querySelector(cellSelector);
+                if (targetCell) {
+                    // Scroll the cell into view
+                    targetCell.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    // Select the cell
+                    selectCell(targetCell);
                 }
             }
 
@@ -580,25 +772,6 @@
                     col = Math.floor(col / 26);
                 }
                 return letter;
-            }
-
-            // Update cell values from data
-            function updateCellValues(cells) {
-                cells.forEach(cellData => {
-                    if (!cellData.name) return;
-
-                    const selector = `.cell[data-name="${cellData.name}"]`;
-                    const cellElement = document.querySelector(selector);
-                    if (cellElement) {
-                        cellElement.textContent = cellData.value;
-                        if (cellData.error) {
-                            cellElement.classList.add('error');
-                        } else {
-                            cellElement.classList.remove('error');
-                        }
-                        cellElement.dataset.formula = cellData.formula || '';
-                    }
-                });
             }
 
             // Select a cell
@@ -1328,7 +1501,7 @@
             });
 
             // Initialize the grid
-            fetchSheetData();
+            fetchSheetData(1, 1);
 
             // Add save modal functionality
             const saveModal = document.getElementById('save-modal');
