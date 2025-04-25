@@ -590,11 +590,22 @@
                     const response = await fetch(url);
                     const data = await response.json();
                     
+                    console.log('Fetched sheet data:', data);
+                    
+                    // Very important - this line was missing!
+                    sheetData = data;
+                    
                     // Store total dimensions on first load
                     if (totalRows === 0) {
                         totalRows = data.totalRows;
                         totalCols = data.totalCols;
                         renderEmptyGrid(totalRows, totalCols);
+                    }
+                    
+                    console.log('Received cell data:', data.cells.length, 'cells');
+                    // Log first few cells to inspect
+                    if (data.cells.length > 0) {
+                        console.log('Sample cells:', data.cells.slice(0, 3));
                     }
                     
                     // Update loaded cells
@@ -664,21 +675,42 @@
                 }
             }
 
-            // Modified updateCellValues function
+            // Replace updateCellValues function with this version:
             function updateCellValues(cells) {
+                console.log('Updating cell values:', cells.length);
+                
                 cells.forEach(cellData => {
-                    if (!cellData.name) return;
+                    if (!cellData.name) {
+                        console.warn('Cell missing name:', cellData);
+                        return;
+                    }
 
                     const selector = `.cell[data-name="${cellData.name}"]`;
                     const cellElement = document.querySelector(selector);
                     if (cellElement) {
-                        cellElement.textContent = cellData.value !== undefined ? cellData.value : '';
+                        // Log every 20th cell update for debugging
+                        if (Math.random() < 0.05) {
+                            console.log('Updating cell:', cellData.name, 
+                                'value:', cellData.value, 
+                                'formula:', cellData.formula);
+                        }
+                        
+                        // Set textContent explicitly, handle undefined/null values
+                        cellElement.textContent = cellData.value !== undefined && 
+                                                 cellData.value !== null ? 
+                                                 String(cellData.value) : '';
+                                                 
+                        // Handle error state
                         if (cellData.error) {
                             cellElement.classList.add('error');
                         } else {
                             cellElement.classList.remove('error');
                         }
+                        
+                        // Store formula in data attribute
                         cellElement.dataset.formula = cellData.formula || '';
+                    } else {
+                        console.warn('Cell element not found:', cellData.name);
                     }
                 });
             }
@@ -1126,23 +1158,21 @@
             document.addEventListener('keydown', function (e) {
                 if (e.ctrlKey && e.key.toLowerCase() === 'z') {
                     e.preventDefault();
-                    // Assume the undo is handled on the server side.
-                    // If sheetData.undo_stack is empty, show "no undo".
-                    // Otherwise, call the /api/undo endpoint.
-                    if (!sheetData || !sheetData.undo_stack || sheetData.undo_stack.length === 0) {
-                        displayBar.textContent = "no undo";
-                    } else {
-                        fetch('/api/undo', { method: 'POST' })
-                            .then(response => response.json())
-                            .then(data => {
-                                displayBar.textContent = data.status;
-                                fetchSheetData(); // refresh the grid
-                            })
-                            .catch(error => {
-                                console.error("Undo error:", error);
-                                displayBar.textContent = "Error performing undo";
-                            });
-                    }
+                    console.log('📢 CTRL+Z pressed – calling /api/undo');
+                    fetch('/api/undo', { method: 'POST' })
+                        .then(response => {
+                            if (!response.ok) throw new Error(response.statusText);
+                            return response.json();
+                        })
+                        .then(data => {
+                            console.log('Undo response:', data);
+                            displayBar.textContent = data.status;
+                            fetchSheetData(); // refresh the grid
+                        })
+                        .catch(error => {
+                            console.error("Undo error:", error);
+                            displayBar.textContent = "Error performing undo";
+                        });
                     return;
                 }
 

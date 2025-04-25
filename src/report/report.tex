@@ -39,8 +39,8 @@
 \lstset{style=mystyle}
 
 % Title and author information
-\title{COP290 C lab: Spreadsheet Implementation}
-\author{Shivankur Gupta 2023CS10809\\ Vanshika 2023CS10746\\ Samyak Sanghvi 2023CS10807}
+\title{COP290 Rust lab: Spreadsheet Implementation}
+\author{Samyak Sanghvi 2023CS10807\\Shivankur Gupta 2023CS10809\\ Vanshika 2023CS10746 }
 
 \begin{document}
 
@@ -58,11 +58,12 @@ We have migrated the existing spreadsheet project from C to Rust, enhanced its f
 \item \textbf{Web-Based GUI}: The application features a browser-based GUI, google sheet like that provides an intuitive interface for users to interact with the spreadsheet. The GUI includes a cell grid renderer, formula bar component, and event handlers for user actions.
     \item \textbf{Formula Management}: The system supports a wide range of formulas, including arithmetic operations, string manipulations, and built-in functions like MAX, MIN, and SLEEP. Users can enter formulas directly into cells, and the system evaluates them in real-time. Formula can be typed in the formula bar, or in the cells or by selecting cells.
     \item \textbf{Undo/Redo Functionality}: We can go to the just previous state by using UNDO. And doing UNDO again works in actual like REDO, it goes to the initial state again. (This feature is supported only in terminal).
-    \item \textbf{File Operations}: Users can save their spreadsheets in a compressed binary format (.bin.gz) or export them as CSV files. The system also supports loading existing spreadsheets from disk.
+    \item \textbf{File Operations}: Users can save their spreadsheets in a compressed binary format (.bin.gz) on the server or export them as CSV and XLSX (formula supported) files. 
     \item \textbf{Graph Plotting}: The system allows users to create various types of graphs (line, bar, scatter, area) based on spreadsheet data. Users can specify parameters such as X and Y ranges, titles, labels, and dimensions for the graphs.
     \item \textbf{Login Sytem} : The system includes a login system that allows users to register, log in, and manage their passwords securely. Password reset functionality is also provided via email.
     \item \textbf{Collaborative sheet}: The system allows users to create and manage spreadsheets collaboratively. Users can share their spreadsheets with others, and the system tracks file ownership and access permissions.
     \item \textbf{Public and Private} : The files can be made public or private as well.
+
 \end{enumerate}
 
 \section{Design and Software Architecture}
@@ -76,7 +77,7 @@ The architecture adopts a client-server model with a browser-based frontend and 
 \subsubsection{Frontend Layer}
 \begin{itemize}
     \item \textbf{Technologies}: HTML, CSS, WebAssembly
-    \item \textbf{Frameworks}: eframe for GUI rendering, wasm for browser execution
+
     \item \textbf{Key Components}:
     \begin{itemize}
         \item Cell Grid Renderer - Manages the viewport and displays the active 10$\times$10 grid
@@ -89,7 +90,7 @@ The architecture adopts a client-server model with a browser-based frontend and 
 
 \subsubsection{Backend Layer}
 \begin{itemize}
-    \item \textbf{Technologies}: Rust, actix-web
+    \item \textbf{Technologies}: Rust, actix-web, axum
     \item \textbf{Core Components}:
     \begin{itemize}
         \item Cell Storage Engine - Maintains the spreadsheet data structure (up to 999 rows $\times$ 18,278 columns)
@@ -104,7 +105,7 @@ The architecture adopts a client-server model with a browser-based frontend and 
 \subsubsection{Data Persistence Layer}
 \begin{itemize}
     \item \textbf{File Storage}: Gzip compression with bincode serialization
-    \item \textbf{Formats}: Custom binary (.bin.gz) and CSV export/import
+    \item \textbf{Formats}: Custom binary (.bin.gz) and CSV/XLXS export
     \item \textbf{Version Tracking}: Sequential state storage for undo/redo operations
 \end{itemize}
 

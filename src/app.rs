@@ -257,10 +257,10 @@ pub async fn run(rows: i16, cols: i16) -> Result<(), Box<dyn std::error::Error>>
         .with_state(app_state);
 
     // Start server
-    let listener = TcpListener::bind("127.0.0.1:80").await?;
+    let listener = TcpListener::bind("127.0.0.1:8000").await?;
     // let local_ip = local_ip().unwrap_or_else(|_| "127.0.0.1".parse().unwrap());
-    // println!("Listening on http://{}:80", local_ip);
-    println!("Listening on http://localhost:80");
+    // println!("Listening on http://{}:8000", local_ip);
+    println!("Listening on http://localhost:8000");
 
     axum::serve(listener, app).await?;
 
@@ -360,8 +360,8 @@ async fn serve_sheet(
 /// # Returns
 /// * JSON representation of the spreadsheet data
 async fn get_sheet_data(
-    Query(params): Query<SheetDataQuery>, 
-    State(state): State<Arc<AppState>>
+    Query(params): Query<SheetDataQuery>,
+    State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
     // Try to lock the spreadsheet state with error handling
     let sheet_result = state.sheet.lock();
@@ -372,34 +372,35 @@ async fn get_sheet_data(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({
                     "error": "Spreadsheet is currently unavailable"
-                }))
-            ).into_response();
+                })),
+            )
+                .into_response();
         }
     };
-    
+
     // Get total dimensions
     let total_rows = sheet.rows;
     let total_cols = sheet.cols;
-    
+
     // Parse pagination parameters with defaults
     let start_row = params.start_row.unwrap_or(1).max(1);
     let start_col = params.start_col.unwrap_or(1).max(1);
     let page_rows = params.rows.unwrap_or(50).min(100).max(1); // Limit to 100 rows
     let page_cols = params.cols.unwrap_or(50).min(100).max(1); // Limit to 100 cols
-    
+
     // Calculate end bounds respecting sheet dimensions
     let end_row = (start_row + page_rows - 1).min(total_rows);
     let end_col = (start_col + page_cols - 1).min(total_cols);
-    
+
     let mut cell_data = Vec::new();
-    
+
     // Only process cells in the requested range
     for r in start_row..=end_row {
         for c in start_col..=end_col {
             // Safely calculate index with bounds checking
             if r > 0 && r <= total_rows && c > 0 && c <= total_cols {
                 let index = ((r - 1) * total_cols + (c - 1)) as usize;
-                
+
                 // Make sure index is within bounds of the cells array
                 if index < sheet.cells.len() {
                     if let Some(cell) = &sheet.cells[index] {
@@ -416,7 +417,7 @@ async fn get_sheet_data(
             }
         }
     }
-    
+
     Json(serde_json::json!({
         "totalRows": total_rows,
         "totalCols": total_cols,
@@ -425,7 +426,8 @@ async fn get_sheet_data(
         "rows": end_row - start_row + 1,
         "cols": end_col - start_col + 1,
         "cells": cell_data
-    })).into_response()
+    }))
+    .into_response()
 }
 
 /// Get data for a specific cell
@@ -1278,15 +1280,26 @@ async fn get_sheet_status(State(state): State<Arc<AppState>>) -> impl IntoRespon
 /// Add an endpoint for undo
 async fn undo(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let mut sheet = state.sheet.lock().unwrap();
+    // debug before
+    // println!(
+    //     "DEBUG /undo handler: undo_stack length before undo: {}",
+    //     sheet.undo_stack.len()
+    // );
+
     let mut status = String::new();
-    // Call your spreadsheet's undo method
     if sheet.undo_stack.is_empty() {
         status = String::from("no undo");
     } else {
+        // perform undo
         sheet.spreadsheet_undo(&mut status);
+        // println!("DEBUG /undo handler: performed undo, status: {}", status);
+        // println!(
+        //     "DEBUG /undo handler: undo_stack length after undo: {}",
+        //     sheet.undo_stack.len()
+        // );
     }
 
-    // Increment version if needed, update last modified, etc.
+    // bump version & timestamp
     {
         let mut version = state.version.lock().unwrap();
         *version += 1;

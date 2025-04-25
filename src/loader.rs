@@ -30,19 +30,19 @@ pub fn from_csv(filepath: impl AsRef<Path>) -> Result<Box<Spreadsheet>, Box<dyn 
     let file = File::open(filepath)?;
     let reader = BufReader::new(file);
     let lines: Vec<String> = reader.lines().collect::<Result<_, _>>()?;
-    
+
     if lines.is_empty() {
         return Err("CSV file is empty".into());
     }
-    
+
     // Count rows and columns
     let rows = lines.len();
     let cols = csv_count_columns(&lines[0])?;
-    
+
     // Create spreadsheet
     let mut sheet = Spreadsheet::spreadsheet_create(rows as i16, cols as i16)
         .ok_or("Failed to create spreadsheet")?;
-    
+
     // Parse and fill data
     for (r, line) in lines.iter().enumerate() {
         let row_cells = parse_csv_row(line)?;
@@ -50,10 +50,10 @@ pub fn from_csv(filepath: impl AsRef<Path>) -> Result<Box<Spreadsheet>, Box<dyn 
             if c >= cols || r >= rows {
                 continue; // Skip extra data
             }
-            
+
             let row = (r + 1) as i16;
             let col = (c + 1) as i16;
-            
+
             // Try to parse as number or formula
             if let Ok(num) = value_str.parse::<i32>() {
                 let formula = ParsedRHS::SingleValue(Operand::Number(num));
@@ -63,10 +63,11 @@ pub fn from_csv(filepath: impl AsRef<Path>) -> Result<Box<Spreadsheet>, Box<dyn 
                 // Handle formula - strip the = sign
                 let formula_str = &value_str[1..];
                 let mut status = String::new();
-                
+
                 // Try to parse the formula
-                let (is_valid, _, _, formula) = sheet.is_valid_command(&Spreadsheet::get_cell_name(row, col), formula_str);
-                
+                let (is_valid, _, _, formula) =
+                    sheet.is_valid_command(&Spreadsheet::get_cell_name(row, col), formula_str);
+
                 if is_valid {
                     sheet.spreadsheet_set_cell_value(row, col, formula, &mut status);
                 } else {
@@ -83,7 +84,7 @@ pub fn from_csv(filepath: impl AsRef<Path>) -> Result<Box<Spreadsheet>, Box<dyn 
             }
         }
     }
-    
+
     Ok(sheet)
 }
 
@@ -110,35 +111,38 @@ pub fn from_csv(filepath: impl AsRef<Path>) -> Result<Box<Spreadsheet>, Box<dyn 
 #[cfg(feature = "web")]
 pub fn from_excel(filepath: impl AsRef<Path>) -> Result<Box<Spreadsheet>, Box<dyn Error>> {
     use calamine::{open_workbook, Reader, Xlsx};
-    
+
     let mut workbook: Xlsx<_> = open_workbook(filepath)?;
-    
+
     // Get the first worksheet
-    let sheet_name = workbook.sheet_names().get(0)
+    let sheet_name = workbook
+        .sheet_names()
+        .get(0)
         .ok_or("No sheets found in Excel file")?
         .clone();
-    
-    let range = workbook.worksheet_range(&sheet_name)
+
+    let range = workbook
+        .worksheet_range(&sheet_name)
         .ok_or("Failed to get worksheet")??;
-    
+
     let rows = range.height();
     let cols = range.width();
-    
+
     if rows == 0 || cols == 0 {
         return Err("Excel sheet is empty".into());
     }
-    
+
     // Create spreadsheet
     let mut sheet = Spreadsheet::spreadsheet_create(rows as i16, cols as i16)
         .ok_or("Failed to create spreadsheet")?;
-    
+
     // Parse cells
     for (r, row) in range.rows().enumerate() {
         for (c, cell) in row.iter().enumerate() {
             let row = (r + 1) as i16;
             let col = (c + 1) as i16;
             let mut status = String::new();
-            
+
             match cell {
                 calamine::Data::Int(i) => {
                     // Integer value
@@ -146,31 +150,33 @@ pub fn from_excel(filepath: impl AsRef<Path>) -> Result<Box<Spreadsheet>, Box<dy
                         let formula = ParsedRHS::SingleValue(Operand::Number(*i as i32));
                         sheet.spreadsheet_set_cell_value(row, col, formula, &mut status);
                     }
-                },
+                }
                 calamine::Data::Float(f) => {
                     // Float value - convert to integer as the system works with i32
                     let formula = ParsedRHS::SingleValue(Operand::Number(*f as i32));
                     sheet.spreadsheet_set_cell_value(row, col, formula, &mut status);
-                },
+                }
                 calamine::Data::Formula(_, value) => {
                     // For formulas, we store the calculated value
                     // In a real implementation, we'd try to convert the Excel formula to our format
                     match value {
-                        calamine::Data::Int(i) if *i <= i32::MAX as i64 && *i >= i32::MIN as i64 => {
+                        calamine::Data::Int(i)
+                            if *i <= i32::MAX as i64 && *i >= i32::MIN as i64 =>
+                        {
                             let formula = ParsedRHS::SingleValue(Operand::Number(*i as i32));
                             sheet.spreadsheet_set_cell_value(row, col, formula, &mut status);
-                        },
+                        }
                         calamine::Data::Float(f) => {
                             let formula = ParsedRHS::SingleValue(Operand::Number(*f as i32));
                             sheet.spreadsheet_set_cell_value(row, col, formula, &mut status);
-                        },
+                        }
                         _ => {
                             // Default to 0 for other types
                             let formula = ParsedRHS::SingleValue(Operand::Number(0));
                             sheet.spreadsheet_set_cell_value(row, col, formula, &mut status);
                         }
                     }
-                },
+                }
                 // Handle other data types - default to 0
                 _ => {
                     let formula = ParsedRHS::SingleValue(Operand::Number(0));
@@ -179,7 +185,7 @@ pub fn from_excel(filepath: impl AsRef<Path>) -> Result<Box<Spreadsheet>, Box<dy
             }
         }
     }
-    
+
     Ok(sheet)
 }
 
@@ -188,7 +194,7 @@ fn csv_count_columns(line: &str) -> Result<usize, Box<dyn Error>> {
     let mut columns = 0;
     let mut in_quotes = false;
     let mut chars = line.chars().peekable();
-    
+
     while let Some(c) = chars.next() {
         if c == '"' {
             // Toggle quote state
@@ -206,7 +212,7 @@ fn csv_count_columns(line: &str) -> Result<usize, Box<dyn Error>> {
             columns += 1;
         }
     }
-    
+
     // Add 1 for the last column
     columns += 1;
     Ok(columns)
@@ -218,7 +224,7 @@ fn parse_csv_row(line: &str) -> Result<Vec<String>, Box<dyn Error>> {
     let mut current_field = String::new();
     let mut in_quotes = false;
     let mut chars = line.chars().peekable();
-    
+
     while let Some(c) = chars.next() {
         match c {
             '"' => {
@@ -234,21 +240,21 @@ fn parse_csv_row(line: &str) -> Result<Vec<String>, Box<dyn Error>> {
                 } else {
                     in_quotes = !in_quotes;
                 }
-            },
+            }
             ',' if !in_quotes => {
                 // End of field
                 result.push(current_field);
                 current_field = String::new();
-            },
+            }
             _ => {
                 current_field.push(c);
             }
         }
     }
-    
+
     // Add the last field
     result.push(current_field);
-    
+
     Ok(result)
 }
 
@@ -274,10 +280,11 @@ fn parse_csv_row(line: &str) -> Result<Vec<String>, Box<dyn Error>> {
 /// ```
 pub fn load_spreadsheet(filepath: impl AsRef<Path>) -> Result<Box<Spreadsheet>, Box<dyn Error>> {
     let path = filepath.as_ref();
-    let extension = path.extension()
+    let extension = path
+        .extension()
         .and_then(|ext| ext.to_str())
         .map(|ext| ext.to_lowercase());
-    
+
     match extension.as_deref() {
         Some("csv") => from_csv(path),
         #[cfg(feature = "web")]
