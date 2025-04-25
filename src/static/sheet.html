@@ -396,6 +396,55 @@
             let loadedCells = {};   // Cache of loaded cell data
             let visibleCellsChanged = false; // Flag to track if visible area changed
 
+            // constants for our layout
+            const headerRowHeight = 30;   // height of the top header
+            const headerColWidth  = 50;   // width of the left header
+            const cellHeight       = 25;  // each data row height
+            const cellWidth        = 100; // each data column width
+            const scrollBuffer     = 5;   // extra rows/cols to pre‐fetch
+            let rafToken;
+
+            const container = document.getElementById('grid-container');
+            container.addEventListener('scroll', () => {
+                if (rafToken) cancelAnimationFrame(rafToken);
+                rafToken = requestAnimationFrame(onScroll);
+            });
+
+            function onScroll() {
+                if (isFetching) return;
+
+                const { scrollTop, scrollLeft, clientHeight, clientWidth } = container;
+
+                // compute which row/col is at the top‐left of view (minus header)
+                const newStartRow = Math.max(1,
+                    Math.floor((scrollTop - headerRowHeight) / cellHeight) - scrollBuffer
+                );
+                const newStartCol = Math.max(1,
+                    Math.floor((scrollLeft - headerColWidth) / cellWidth) - scrollBuffer
+                );
+
+                // compute how many rows/cols fit in view + buffer
+                const newViewportRows = Math.ceil(clientHeight / cellHeight) + scrollBuffer * 2;
+                const newViewportCols = Math.ceil(clientWidth  / cellWidth ) + scrollBuffer * 2;
+
+                // only refetch when the window has actually shifted outside the loaded area
+                const movedVertically   = newStartRow !== currentStartRow || newViewportRows !== viewportRows;
+                const movedHorizontally = newStartCol !== currentStartCol || newViewportCols !== viewportCols;
+
+                if (movedVertically || movedHorizontally) {
+                    viewportRows = newViewportRows;
+                    viewportCols = newViewportCols;
+                    fetchSheetData(newStartRow, newStartCol);
+                }
+            }
+
+            // make sure your initial fetch uses a viewport sized to the container:
+            const initHeight = container.clientHeight;
+            const initWidth  = container.clientWidth;
+            viewportRows = Math.ceil(initHeight / cellHeight) + scrollBuffer * 2;
+            viewportCols = Math.ceil(initWidth  / cellWidth ) + scrollBuffer * 2;
+            fetchSheetData(1, 1);
+
             // Error modal handlers
             const errorModal = document.getElementById('error-modal');
             const closeErrorModalBtn = document.getElementById('close-error-modal');
