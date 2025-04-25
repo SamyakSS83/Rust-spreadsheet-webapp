@@ -152,6 +152,66 @@ This application is a complete rewrite of a legacy spreadsheet tool from C to Ru
 
 ---
 
+## 🌟 Features of Extension
+
+### Web-Based GUI
+- Browser-based interface similar to Google Sheets
+- Intuitive grid renderer with resizable columns and rows
+- Interactive formula bar component for advanced editing
+- Responsive design works across different screen sizes
+- Mouse, keyboard, and touchpad interaction support
+
+### Formula Management
+- Support for arithmetic operations (+, -, *, /)
+- String manipulation capabilities
+- Built-in functions: MAX, MIN, SUM, AVG, STDEV, SLEEP
+- Real-time formula evaluation and result display
+- Multiple input methods: formula bar, direct cell input, or cell selection
+
+### Undo/Redo Functionality
+- State preservation for each spreadsheet modification
+- Single-step undo capability to revert changes
+- Repeated undo acts as redo, returning to initial state
+- Optimized for terminal-based interface
+- State tracking via versioned file system
+
+### File Operations
+- Native compressed binary format (.bin.gz) for efficient storage
+- CSV export functionality for compatibility
+- Fast loading of existing spreadsheets from disk
+- File versioning support
+- Auto-save capabilities
+
+### Graph Plotting
+- Multiple chart types: line, bar, scatter, area
+- Customizable X and Y data ranges
+- Configurable titles, labels, and dimensions
+- Interactive graph generation from spreadsheet data
+- Image export options for generated graphs
+
+### Login System
+- Secure user registration and authentication
+- Password management with encryption
+- Email-based password reset functionality
+- Session management with timeouts
+- User profile customization
+
+### Collaborative Features
+- Multi-user spreadsheet editing
+- Real-time update propagation
+- File ownership tracking
+- Access control management
+- Conflict resolution mechanisms
+
+### Access Control
+- Toggle between public and private spreadsheet modes
+- Shareable URL generation for public sheets
+- Granular permission settings
+- Owner-based access management
+- Visibility indicators for shared resources
+
+---
+
 ## 🔒 Security Model
 
 - Input sanitization for formulas and commands
